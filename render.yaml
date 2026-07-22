@@ -1,0 +1,43 @@
+# Blueprint de despliegue para Render.com (https://render.com/docs/blueprint-spec)
+#
+# Cómo usarlo: en el panel de Render, elegí "New" → "Blueprint" y apuntalo a
+# este repositorio. Render va a crear automáticamente la base de datos
+# PostgreSQL y el servicio web con la configuración de abajo. Después del
+# primer despliegue, la app queda accesible en la URL que te asigne Render.
+#
+# Nota sobre el plan gratuito: la base de datos PostgreSQL gratuita de
+# Render expira a los 30 días (con 14 días de margen para pasarla a un plan
+# pago antes de que se borre) y el servicio web gratuito "duerme" después de
+# 15 minutos sin uso (la primera visita después de eso demora ~1 minuto en
+# responder mientras arranca). Para un uso real del negocio, conviene pasar
+# ambos a un plan pago antes de que la base de datos gratuita expire.
+
+databases:
+  - name: restaurante-db
+    plan: free
+    databaseName: restaurante
+    user: restaurante
+
+services:
+  - type: web
+    name: restaurante-app
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    # db:migrate y db:seed son seguros de correr en cada arranque: no rompen
+    # nada si ya se corrieron antes (no duplican tablas ni datos de ejemplo).
+    startCommand: npm run db:migrate && npm run db:seed && npm run start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: restaurante-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: NODE_ENV
+        value: production
