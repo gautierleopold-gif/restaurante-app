@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Administración - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <h2 class="mb16">Administración</h2>
+    <div class="tabs" id="tabs">
+      <button data-tab="productos" class="active">Productos</button>
+      <button data-tab="categorias">Categorías</button>
+      <button data-tab="adicionales">Adicionales</button>
+      <button data-tab="estaciones">Estaciones de cocina</button>
+      <button data-tab="salon">Salón y mesas</button>
+      <button data-tab="usuarios" id="tab-usuarios" style="display:none">Usuarios</button>
+    </div>
+    <div id="tab-content"></div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO"]);
+    // Si el usuario no tiene el rol requerido, requireRole ya reemplazó el
+    // contenido de la página por un mensaje de "Acceso restringido". El resto
+    // del script queda dentro de este bloque para no tocar elementos del DOM
+    // que ya no existen en ese caso.
+    if (user) {
+    renderNav();
+    const canManageUsers = ["ADMIN", "DUENIO"].includes(user.role);
+    if (canManageUsers) document.getElementById("tab-usuarios").style.display = "inline-block";
+
+    let categories = [], stations = [], modifierGroups = [], products = [], rooms = [], users = [];
+
+    async function loadAll() {
+      const [c, s, mg, p, r] = await Promise.all([
+        api("/menu/categories"),
+        api("/menu/stations"),
+        api("/menu/modifier-groups"),
+        api("/menu/products"),
+        api("/rooms"),
+      ]);
+      categories = c.categories; stations = s.stations; modifierGroups = mg.modifierGroups;
+      products = p.products; rooms = r.rooms;
+      if (canManageUsers) {
+        const u = await api("/auth/users");
+        users = u.users;
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Categorías
+    // ---------------------------------------------------------------------
+    function renderCategorias() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Categorías del menú</h3><button class="btn btn-primary btn-sm" id="add-cat">+ Nueva categoría</button></div>
+          <table><thead><tr><th>Nombre</th><th>Orden</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${categories.map(c => `<tr>
+              <td>${c.name}</td><td>${c.order}</td>
+              <td><span class="pill pill-${c.active ? "libre" : "pendiente_pago"}">${c.active ? "Activa" : "Inactiva"}</span></td>
+              <td><button class="btn btn-sm" data-toggle-cat="${c.id}" data-active="${c.active}">${c.active ? "Desactivar" : "Activar"}</button></td>
+            </tr>`).join("")}
+          </tbody></table>
+        </div>`;
+    }
+    function wireCategorias() {
+      document.getElementById("add-cat").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nueva categoría</h2>
+          <div class="field"><label>Nombre</label><input id="cat-name" /></div>
+          <div class="field"><label>Orden</label><input id="cat-order" type="number" value="0" /></div>
+          <button class="btn btn-primary" id="save-cat">Guardar</button>`);
+        overlay.querySelector("#save-cat").addEventListener("click", async () => {
+          try {
+            await api("/menu/categories", { method: "POST", body: { name: overlay.querySelector("#cat-name").value, order: Number(overlay.querySelector("#cat-order").value) } });
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-toggle-cat]").forEach(btn => btn.addEventListener("click", async () => {
+        await api(`/menu/categories/${btn.dataset.toggleCat}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } });
+        await refresh();
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Estaciones
+    // ---------------------------------------------------------------------
+    function renderEstaciones() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Estaciones de preparación</h3><button class="btn btn-primary btn-sm" id="add-station">+ Nueva estación</button></div>
+          <p class="small muted">Ej: Cocina, Barra, Cafetería, Postres. Cada producto se asigna a una estación para que la comanda llegue al sector correcto.</p>
+          <table><thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${stations.map(s => `<tr><td>${s.name}</td>
+              <td><span class="pill pill-${s.active ? "libre" : "pendiente_pago"}">${s.active ? "Activa" : "Inactiva"}</span></td>
+              <td><button class="btn btn-sm" data-toggle-station="${s.id}" data-active="${s.active}">${s.active ? "Desactivar" : "Activar"}</button></td>
+            </tr>`).join("")}
+          </tbody></table>
+        </div>`;
+    }
+    function wireEstaciones() {
+      document.getElementById("add-station").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nueva estación</h2><div class="field"><label>Nombre</label><input id="station-name" /></div><button class="btn btn-primary" id="save-station">Guardar</button>`);
+        overlay.querySelector("#save-station").addEventListener("click", async () => {
+          try {
+            await api("/menu/stations", { method: "POST", body: { name: overlay.querySelector("#station-name").value } });
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-toggle-station]").forEach(btn => btn.addEventListener("click", async () => {
+        await api(`/menu/stations/${btn.dataset.toggleStation}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } });
+        await refresh();
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Adicionales / modificadores
+    // ---------------------------------------------------------------------
+    function renderAdicionales() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Grupos de adicionales / modificadores</h3><button class="btn btn-primary btn-sm" id="add-modgroup">+ Nuevo grupo</button></div>
+          <p class="small muted">Ej: "Punto de la carne" (obligatorio, elegir 1) o "Adicionales" (opcional, elegir varios).</p>
+          ${modifierGroups.map(g => `
+            <div class="card mb8" style="background:var(--surface-alt)">
+              <strong>${g.name}</strong> <span class="small muted">(min ${g.min} / max ${g.max}${g.required ? " · obligatorio" : ""})</span>
+              <ul class="small">${g.modifiers.map(m => `<li>${m.name} ${Number(m.price) > 0 ? "+$" + money(m.price) : ""}</li>`).join("")}</ul>
+              <button class="btn btn-sm" data-add-modifier="${g.id}">+ agregar opción</button>
+            </div>`).join("")}
+        </div>`;
+    }
+    function wireAdicionales() {
+      document.getElementById("add-modgroup").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nuevo grupo de adicionales</h2>
+          <div class="field"><label>Nombre</label><input id="mg-name" /></div>
+          <div class="grid grid-2">
+            <div class="field"><label>Mínimo</label><input id="mg-min" type="number" value="0" /></div>
+            <div class="field"><label>Máximo</label><input id="mg-max" type="number" value="1" /></div>
+          </div>
+          <div class="field"><label><input type="checkbox" id="mg-required" style="width:auto" /> Obligatorio</label></div>
+          <div class="field"><label>Opciones (una por línea, formato: Nombre,precio)</label><textarea id="mg-options" rows="3" placeholder="Extra queso,500\nSin cebolla,0"></textarea></div>
+          <button class="btn btn-primary" id="save-mg">Guardar</button>`);
+        overlay.querySelector("#save-mg").addEventListener("click", async () => {
+          const lines = overlay.querySelector("#mg-options").value.split("\n").map(l => l.trim()).filter(Boolean);
+          const modifiers = lines.map(l => { const [name, price] = l.split(","); return { name: (name || "").trim(), price: Number(price || 0) }; });
+          try {
+            await api("/menu/modifier-groups", { method: "POST", body: {
+              name: overlay.querySelector("#mg-name").value,
+              min: Number(overlay.querySelector("#mg-min").value),
+              max: Number(overlay.querySelector("#mg-max").value),
+              required: overlay.querySelector("#mg-required").checked,
+              modifiers,
+            }});
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-add-modifier]").forEach(btn => btn.addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nueva opción</h2>
+          <div class="field"><label>Nombre</label><input id="mod-name" /></div>
+          <div class="field"><label>Precio adicional</label><input id="mod-price" type="number" value="0" /></div>
+          <button class="btn btn-primary" id="save-mod">Guardar</button>`);
+        overlay.querySelector("#save-mod").addEventListener("click", async () => {
+          try {
+            await api(`/menu/modifier-groups/${btn.dataset.addModifier}/modifiers`, { method: "POST", body: {
+              name: overlay.querySelector("#mod-name").value, price: Number(overlay.querySelector("#mod-price").value)
+            }});
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Productos
+    // ---------------------------------------------------------------------
+    function renderProductos() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Productos</h3><button class="btn btn-primary btn-sm" id="add-product">+ Nuevo producto</button></div>
+          <table><thead><tr><th>Nombre</th><th>Categoría</th><th>Estación</th><th>Precio base</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${products.map(p => `<tr>
+              <td>${p.name}</td><td>${p.category_name}</td><td>${p.station_name || "-"}</td><td>$${money(p.base_price)}</td>
+              <td><span class="pill pill-${p.active ? "libre" : "pendiente_pago"}">${p.active ? "Activo" : "Inactivo"}</span></td>
+              <td><button class="btn btn-sm" data-toggle-product="${p.id}" data-active="${p.active}">${p.active ? "Desactivar" : "Activar"}</button></td>
+            </tr>`).join("")}
+          </tbody></table>
+        </div>`;
+    }
+    function wireProductos() {
+      document.getElementById("add-product").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nuevo producto</h2>
+          <div class="field"><label>Nombre</label><input id="prod-name" /></div>
+          <div class="field"><label>Descripción</label><input id="prod-desc" /></div>
+          <div class="grid grid-2">
+            <div class="field"><label>Categoría</label><select id="prod-cat">${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}</select></div>
+            <div class="field"><label>Estación</label><select id="prod-station"><option value="">(ninguna)</option>${stations.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}</select></div>
+          </div>
+          <div class="field"><label>Precio base</label><input id="prod-price" type="number" step="0.01" /></div>
+          <div class="field"><label>Variantes (opcional, una por línea: Nombre,precio)</label><textarea id="prod-variants" rows="2" placeholder="Chica,5500\nGrande,8500"></textarea></div>
+          <div class="field"><label>Grupos de adicionales</label>
+            ${modifierGroups.map(g => `<label class="small" style="display:block;font-weight:normal"><input type="checkbox" value="${g.id}" class="prod-mg" style="width:auto" /> ${g.name}</label>`).join("") || '<span class="small muted">No hay grupos creados todavía.</span>'}
+          </div>
+          <button class="btn btn-primary" id="save-product">Guardar</button>`);
+        overlay.querySelector("#save-product").addEventListener("click", async () => {
+          const lines = overlay.querySelector("#prod-variants").value.split("\n").map(l => l.trim()).filter(Boolean);
+          const variants = lines.map(l => { const [name, price] = l.split(","); return { name: (name || "").trim(), price: Number(price || 0) }; });
+          const modifierGroupIds = Array.from(overlay.querySelectorAll(".prod-mg:checked")).map(i => i.value);
+          try {
+            await api("/menu/products", { method: "POST", body: {
+              name: overlay.querySelector("#prod-name").value,
+              description: overlay.querySelector("#prod-desc").value || null,
+              categoryId: overlay.querySelector("#prod-cat").value,
+              stationId: overlay.querySelector("#prod-station").value || null,
+              basePrice: Number(overlay.querySelector("#prod-price").value),
+              variants, modifierGroupIds,
+            }});
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-toggle-product]").forEach(btn => btn.addEventListener("click", async () => {
+        const active = btn.dataset.active !== "true";
+        await api(`/menu/products/${btn.dataset.toggleProduct}`, { method: "PATCH", body: { active } });
+        await refresh();
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Salón y mesas
+    // ---------------------------------------------------------------------
+    function renderSalon() {
+      return `
+        <div class="flex-between mb8"><h3 style="margin:0">Salones</h3><button class="btn btn-primary btn-sm" id="add-room">+ Nuevo salón</button></div>
+        ${rooms.map(r => `
+          <div class="card mb16">
+            <div class="flex-between mb8"><strong>${r.name}</strong><button class="btn btn-sm" data-add-table="${r.id}">+ Agregar mesa</button></div>
+            <table><thead><tr><th>Mesa</th><th>Capacidad</th><th>Pos X</th><th>Pos Y</th><th></th></tr></thead>
+            <tbody>
+              ${r.tables.map(t => `<tr>
+                <td>${t.name}</td><td>${t.capacity}</td>
+                <td><input type="number" value="${t.pos_x}" class="table-pos" data-table="${t.id}" data-field="posX" style="width:70px" /></td>
+                <td><input type="number" value="${t.pos_y}" class="table-pos" data-table="${t.id}" data-field="posY" style="width:70px" /></td>
+                <td><button class="btn btn-sm btn-danger" data-delete-table="${t.id}">Eliminar</button></td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>`).join("")}
+      `;
+    }
+    function wireSalon() {
+      document.getElementById("add-room").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nuevo salón</h2><div class="field"><label>Nombre</label><input id="room-name" /></div><button class="btn btn-primary" id="save-room">Guardar</button>`);
+        overlay.querySelector("#save-room").addEventListener("click", async () => {
+          await api("/rooms", { method: "POST", body: { name: overlay.querySelector("#room-name").value } });
+          closeModal(overlay); await refresh();
+        });
+      });
+      document.querySelectorAll("[data-add-table]").forEach(btn => btn.addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nueva mesa</h2>
+          <div class="field"><label>Nombre</label><input id="table-name" placeholder="Mesa 6" /></div>
+          <div class="grid grid-2">
+            <div class="field"><label>Capacidad</label><input id="table-cap" type="number" value="4" /></div>
+            <div class="field"><label>&nbsp;</label></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="field"><label>Posición X</label><input id="table-x" type="number" value="0" /></div>
+            <div class="field"><label>Posición Y</label><input id="table-y" type="number" value="0" /></div>
+          </div>
+          <button class="btn btn-primary" id="save-table">Guardar</button>`);
+        overlay.querySelector("#save-table").addEventListener("click", async () => {
+          try {
+            await api("/tables", { method: "POST", body: {
+              roomId: btn.dataset.addTable, name: overlay.querySelector("#table-name").value,
+              capacity: Number(overlay.querySelector("#table-cap").value),
+              posX: Number(overlay.querySelector("#table-x").value), posY: Number(overlay.querySelector("#table-y").value),
+            }});
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      }));
+      document.querySelectorAll(".table-pos").forEach(input => input.addEventListener("change", async () => {
+        await api(`/tables/${input.dataset.table}`, { method: "PATCH", body: { [input.dataset.field]: Number(input.value) } });
+      }));
+      document.querySelectorAll("[data-delete-table]").forEach(btn => btn.addEventListener("click", async () => {
+        if (!confirm("¿Eliminar esta mesa?")) return;
+        await api(`/tables/${btn.dataset.deleteTable}`, { method: "DELETE" });
+        await refresh();
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Usuarios
+    // ---------------------------------------------------------------------
+    const ROLE_OPTIONS = ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"];
+    function renderUsuarios() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Usuarios</h3><button class="btn btn-primary btn-sm" id="add-user">+ Nuevo usuario</button></div>
+          <table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${users.map(u => `<tr>
+              <td>${u.name}</td><td>${u.email}</td><td>${u.role}</td>
+              <td><span class="pill pill-${u.active ? "libre" : "pendiente_pago"}">${u.active ? "Activo" : "Inactivo"}</span></td>
+              <td><button class="btn btn-sm" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? "Desactivar" : "Activar"}</button></td>
+            </tr>`).join("")}
+          </tbody></table>
+        </div>`;
+    }
+    function wireUsuarios() {
+      document.getElementById("add-user").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nuevo usuario</h2>
+          <div class="field"><label>Nombre</label><input id="user-name" /></div>
+          <div class="field"><label>Email</label><input id="user-email" type="email" /></div>
+          <div class="field"><label>Contraseña</label><input id="user-password" type="password" /></div>
+          <div class="field"><label>Rol</label><select id="user-role">${ROLE_OPTIONS.map(r => `<option value="${r}">${r}</option>`).join("")}</select></div>
+          <button class="btn btn-primary" id="save-user">Guardar</button>`);
+        overlay.querySelector("#save-user").addEventListener("click", async () => {
+          try {
+            await api("/auth/users", { method: "POST", body: {
+              name: overlay.querySelector("#user-name").value,
+              email: overlay.querySelector("#user-email").value,
+              password: overlay.querySelector("#user-password").value,
+              role: overlay.querySelector("#user-role").value,
+            }});
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-toggle-user]").forEach(btn => btn.addEventListener("click", async () => {
+        await api(`/auth/users/${btn.dataset.toggleUser}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } });
+        await refresh();
+      }));
+    }
+
+    const TABS = {
+      productos: { render: renderProductos, wire: wireProductos },
+      categorias: { render: renderCategorias, wire: wireCategorias },
+      adicionales: { render: renderAdicionales, wire: wireAdicionales },
+      estaciones: { render: renderEstaciones, wire: wireEstaciones },
+      salon: { render: renderSalon, wire: wireSalon },
+      usuarios: { render: renderUsuarios, wire: wireUsuarios },
+    };
+    let activeTab = "productos";
+
+    function renderActiveTab() {
+      document.getElementById("tab-content").innerHTML = TABS[activeTab].render();
+      TABS[activeTab].wire();
+    }
+
+    async function refresh() {
+      await loadAll();
+      renderActiveTab();
+    }
+
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      if (e.target.tagName !== "BUTTON") return;
+      if (e.target.dataset.tab === "usuarios" && !canManageUsers) return;
+      document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
+      e.target.classList.add("active");
+      activeTab = e.target.dataset.tab;
+      renderActiveTab();
+    });
+
+    refresh();
+    } // fin del bloque "if (user)"
+  </script>
+</body>
+</html>

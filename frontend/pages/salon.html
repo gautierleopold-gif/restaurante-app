@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Salón - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <div class="flex-between mb16">
+      <h2 style="margin:0">Salón</h2>
+      <button class="btn btn-primary" id="new-order-btn">+ Pedido para retiro / delivery</button>
+    </div>
+    <div class="room-tabs" id="room-tabs"></div>
+    <div class="floor" id="floor"></div>
+  </div>
+
+  <script src="/js/socket.io.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireAuth();
+    renderNav();
+
+    let rooms = [];
+    let activeRoomId = null;
+
+    async function loadRooms() {
+      const data = await api("/rooms");
+      rooms = data.rooms;
+      if (!activeRoomId && rooms.length) activeRoomId = rooms[0].id;
+      renderTabs();
+      renderFloor();
+    }
+
+    function renderTabs() {
+      const el = document.getElementById("room-tabs");
+      el.innerHTML = rooms
+        .map(
+          (r) =>
+            `<button class="btn ${r.id === activeRoomId ? "btn-primary" : ""}" data-room="${r.id}">${r.name}</button>`
+        )
+        .join("");
+      el.querySelectorAll("button").forEach((b) =>
+        b.addEventListener("click", () => {
+          activeRoomId = b.dataset.room;
+          renderTabs();
+          renderFloor();
+        })
+      );
+    }
+
+    function statusLabel(s) {
+      return { LIBRE: "Libre", OCUPADA: "Ocupada", RESERVADA: "Reservada", PENDIENTE_PAGO: "Pend. pago" }[s] || s;
+    }
+
+    function renderFloor() {
+      const room = rooms.find((r) => r.id === activeRoomId);
+      const floor = document.getElementById("floor");
+      if (!room || room.tables.length === 0) {
+        floor.innerHTML = `<div class="empty-state">No hay mesas configuradas en este salón todavía. Podés crearlas desde Administración → Salón y mesas.</div>`;
+        return;
+      }
+      const CELL_W = 130;
+      const CELL_H = 110;
+      floor.innerHTML = room.tables
+        .map((t) => {
+          const left = 10 + t.pos_x * CELL_W;
+          const top = 10 + t.pos_y * CELL_H;
+          return `
+          <div class="table-tile ${t.status.toLowerCase()}" style="left:${left}px; top:${top}px" data-table="${t.id}">
+            <div class="t-name">${t.name}</div>
+            <div class="t-cap">${t.capacity} pers.</div>
+            <span class="pill pill-${t.status.toLowerCase()}">${statusLabel(t.status)}</span>
+          </div>`;
+        })
+        .join("");
+      floor.querySelectorAll(".table-tile").forEach((tile) =>
+        tile.addEventListener("click", () => onTableClick(tile.dataset.table))
+      );
+    }
+
+    async function onTableClick(tableId) {
+      const room = rooms.find((r) => r.id === activeRoomId);
+      const table = room.tables.find((t) => t.id === tableId);
+
+      if (table.status === "LIBRE") {
+        const overlay = showModal(`
+          <h2>${table.name}</h2>
+          <p class="muted">Mesa libre. ¿Qué querés hacer?</p>
+          <div class="flex-gap" style="flex-wrap:wrap">
+            <button class="btn btn-primary" id="open-order">Abrir pedido</button>
+            <button class="btn" id="mark-reserved">Marcar reservada</button>
+          </div>
+        `);
+        overlay.querySelector("#open-order").addEventListener("click", () => {
+          location.href = `/pages/pos.html?tableId=${tableId}`;
+        });
+        overlay.querySelector("#mark-reserved").addEventListener("click", async () => {
+          await api(`/tables/${tableId}/status`, { method: "POST", body: { status: "RESERVADA" } });
+          closeModal(overlay);
+          loadRooms();
+        });
+        return;
+      }
+
+      if (table.status === "RESERVADA") {
+        const overlay = showModal(`
+          <h2>${table.name}</h2>
+          <p class="muted">Mesa reservada.</p>
+          <div class="flex-gap">
+            <button class="btn btn-primary" id="open-order">Abrir pedido</button>
+            <button class="btn" id="free-table">Liberar mesa</button>
+          </div>
+        `);
+        overlay.querySelector("#open-order").addEventListener("click", () => {
+          location.href = `/pages/pos.html?tableId=${tableId}`;
+        });
+        overlay.querySelector("#free-table").addEventListener("click", async () => {
+          await api(`/tables/${tableId}/status`, { method: "POST", body: { status: "LIBRE" } });
+          closeModal(overlay);
+          loadRooms();
+        });
+        return;
+      }
+
+      // OCUPADA o PENDIENTE_PAGO: mostrar resumen del pedido abierto
+      if (!table.open_order_id) {
+        toast("Esta mesa figura ocupada pero no tiene un pedido asociado. Revisala desde Administración.", "error");
+        return;
+      }
+      const { order } = await api(`/orders/${table.open_order_id}`);
+      const overlay = showModal(`
+        <h2>${table.name} · Pedido #${order.code}</h2>
+        <p class="muted small">Mozo: ${order.waiter_name || "-"}</p>
+        <div style="max-height:220px;overflow-y:auto" class="mb16">
+          ${
+            order.items.length === 0
+              ? `<p class="muted small">Sin productos todavía.</p>`
+              : order.items
+                  .filter((i) => !i.canceled)
+                  .map(
+                    (i) => `<div class="ticket-item"><div class="ti-top"><span>${i.quantity}x ${i.product_name}</span><span>$${money(i.unit_price * i.quantity)}</span></div></div>`
+                  )
+                  .join("")
+          }
+        </div>
+        <div class="ticket-total-row grand"><span>Total</span><span>$${money(order.total)}</span></div>
+        <div class="flex-gap mt16" style="flex-wrap:wrap">
+          <a class="btn btn-primary" href="/pages/pos.html?orderId=${order.id}">Ver / editar pedido</a>
+          <a class="btn btn-accent" href="/pages/pos.html?orderId=${order.id}&pay=1">Cobrar</a>
+        </div>
+      `);
+    }
+
+    document.getElementById("new-order-btn").addEventListener("click", () => {
+      location.href = "/pages/pos.html?new=1";
+    });
+
+    loadRooms();
+    const socket = connectSocket();
+    if (socket) {
+      socket.on("tables:changed", loadRooms);
+      socket.on("order:updated", loadRooms);
+    }
+    setInterval(loadRooms, 15000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cocina - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <div class="flex-between mb16">
+      <h2 style="margin:0">Comandas</h2>
+      <label class="flex-gap small"><input type="checkbox" id="autorefresh" checked style="width:auto" /> Actualización automática</label>
+    </div>
+    <div class="kds-board" id="kds-board"></div>
+  </div>
+
+  <script src="/js/socket.io.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "COCINA", "MOZO"]);
+    if (user) {
+    renderNav();
+    const canUpdateStatus = ["ADMIN", "DUENIO", "ENCARGADO", "COCINA"].includes(user.role);
+
+    function minutesAgo(dateStr) {
+      const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+      return mins <= 0 ? "recién" : `${mins} min`;
+    }
+
+    function nextStatus(status) {
+      if (status === "PENDIENTE") return "EN_PREPARACION";
+      if (status === "EN_PREPARACION") return "LISTO";
+      if (status === "LISTO") return "ENTREGADO";
+      return null;
+    }
+    function nextLabel(status) {
+      return { PENDIENTE: "Iniciar preparación", EN_PREPARACION: "Marcar listo", LISTO: "Marcar entregado" }[status];
+    }
+
+    async function load() {
+      const data = await api("/kitchen/items");
+      const stations = {};
+      data.items.forEach((it) => {
+        const key = it.station_name || "Sin estación";
+        if (!stations[key]) stations[key] = [];
+        stations[key].push(it);
+      });
+
+      const board = document.getElementById("kds-board");
+      const stationNames = Object.keys(stations).sort();
+      if (stationNames.length === 0) {
+        board.innerHTML = `<div class="empty-state">No hay comandas pendientes. 🎉</div>`;
+        return;
+      }
+      board.innerHTML = stationNames
+        .map(
+          (station) => `
+        <div class="kds-column">
+          <h3>${station} <span class="muted small">(${stations[station].length})</span></h3>
+          ${stations[station]
+            .map(
+              (it) => `
+            <div class="kds-card ${it.kitchen_status.toLowerCase()}" data-item="${it.id}">
+              <div class="kc-top"><span>Pedido #${it.order_code} · ${it.table_name || it.customer_name || it.order_type}</span><span class="kc-time">${minutesAgo(it.sent_at)}</span></div>
+              <div style="margin-top:6px">${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}</div>
+              ${it.modifiers.length ? `<div class="kc-mods">${it.modifiers.join(", ")}</div>` : ""}
+              ${it.notes ? `<div class="kc-mods">📝 ${it.notes}</div>` : ""}
+              <div class="kc-actions">
+                ${
+                  canUpdateStatus && nextStatus(it.kitchen_status)
+                    ? `<button class="btn btn-sm btn-primary" data-advance="${it.id}" data-to="${nextStatus(it.kitchen_status)}">${nextLabel(it.kitchen_status)}</button>`
+                    : ""
+                }
+              </div>
+            </div>`
+            )
+            .join("")}
+        </div>`
+        )
+        .join("");
+
+      board.querySelectorAll("[data-advance]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/kitchen/items/${btn.dataset.advance}/status`, {
+              method: "PATCH",
+              body: { status: btn.dataset.to },
+            });
+            load();
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        })
+      );
+    }
+
+    load();
+    const socket = connectSocket();
+    if (socket) socket.on("kitchen:updated", load);
+    setInterval(() => {
+      if (document.getElementById("autorefresh").checked) load();
+    }, 10000);
+    } // fin del bloque "if (user)"
+  </script>
+</body>
+</html>

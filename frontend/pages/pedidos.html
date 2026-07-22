@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pedidos - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <div class="flex-between mb16">
+      <h2 style="margin:0">Pedidos</h2>
+      <a href="/pages/pos.html?new=1" class="btn btn-primary">+ Retiro / Delivery</a>
+    </div>
+    <div class="tabs" id="status-tabs">
+      <button data-status="ABIERTO" class="active">Abiertos</button>
+      <button data-status="CERRADO">Cerrados</button>
+      <button data-status="CANCELADO">Cancelados</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Tipo</th><th>Mesa / Cliente</th><th>Mozo</th><th>Total</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody id="orders-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/js/socket.io.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"]);
+    if (user) renderNav();
+    let currentStatus = "ABIERTO";
+
+    function typeLabel(t) { return { SALON: "Salón", RETIRO: "Retiro", DELIVERY: "Delivery" }[t] || t; }
+
+    async function load() {
+      const data = await api(`/orders?status=${currentStatus}`);
+      const body = document.getElementById("orders-body");
+      if (data.orders.length === 0) {
+        body.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">No hay pedidos en este estado.</td></tr>`;
+        return;
+      }
+      body.innerHTML = data.orders
+        .map(
+          (o) => `
+        <tr>
+          <td>#${o.code}</td>
+          <td>${typeLabel(o.type)}</td>
+          <td>${o.table_name || o.customer_name || "-"}</td>
+          <td>${o.waiter_name || "-"}</td>
+          <td>$${money(o.total)}</td>
+          <td><span class="pill pill-${o.status === "ABIERTO" ? "ocupada" : o.status === "CERRADO" ? "libre" : "pendiente_pago"}">${o.status}</span></td>
+          <td><a class="btn btn-sm" href="/pages/pos.html?orderId=${o.id}">Ver</a></td>
+        </tr>`
+        )
+        .join("");
+    }
+
+    document.getElementById("status-tabs").addEventListener("click", (e) => {
+      if (e.target.tagName !== "BUTTON") return;
+      document.querySelectorAll("#status-tabs button").forEach((b) => b.classList.remove("active"));
+      e.target.classList.add("active");
+      currentStatus = e.target.dataset.status;
+      load();
+    });
+
+    load();
+    const socket = connectSocket();
+    if (socket) socket.on("order:updated", load);
+  </script>
+</body>
+</html>

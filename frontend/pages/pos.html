@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Punto de venta - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container" id="setup-container" style="display:none">
+    <div class="card" style="max-width:480px;margin:40px auto">
+      <h2>Nuevo pedido</h2>
+      <div class="field">
+        <label>Tipo de pedido</label>
+        <select id="order-type">
+          <option value="RETIRO">Retiro en el local</option>
+          <option value="DELIVERY">Delivery</option>
+        </select>
+      </div>
+      <div class="field"><label>Nombre del cliente</label><input id="customer-name" /></div>
+      <div class="field"><label>Teléfono</label><input id="customer-phone" /></div>
+      <div class="field" id="address-field"><label>Dirección de entrega</label><input id="customer-address" /></div>
+      <button class="btn btn-primary" id="create-order-btn">Crear pedido</button>
+    </div>
+  </div>
+
+  <div class="container" id="pos-container" style="display:none">
+    <div class="flex-between mb16">
+      <div>
+        <h2 style="margin:0" id="order-title">Pedido</h2>
+        <div class="muted small" id="order-subtitle"></div>
+      </div>
+      <a href="/pages/salon.html" class="btn">← Volver al salón</a>
+    </div>
+    <div class="pos-layout">
+      <div>
+        <div class="category-tabs" id="category-tabs"></div>
+        <div class="product-grid" id="product-grid"></div>
+      </div>
+      <div class="card ticket">
+        <h3 style="margin-top:0">Comanda</h3>
+        <div id="ticket-items"></div>
+        <div class="mt16" id="ticket-totals"></div>
+        <div class="flex-gap mt16" style="flex-wrap:wrap" id="ticket-actions"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/socket.io.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"]);
+    if (user) {
+    renderNav();
+
+    const params = new URLSearchParams(location.search);
+    let order = null;
+    let categories = [];
+    let products = [];
+    let activeCategoryId = null;
+    const canDiscount = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
+    const canCancelItem = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
+    const canClose = ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"].includes(user.role);
+
+    async function loadMenu() {
+      const [catData, prodData] = await Promise.all([api("/menu/categories"), api("/menu/products")]);
+      categories = catData.categories.filter((c) => c.active);
+      products = prodData.products.filter((p) => p.active);
+      if (!activeCategoryId && categories.length) activeCategoryId = categories[0].id;
+      renderCategoryTabs();
+      renderProductGrid();
+    }
+
+    function renderCategoryTabs() {
+      const el = document.getElementById("category-tabs");
+      el.innerHTML = categories
+        .map((c) => `<button class="btn ${c.id === activeCategoryId ? "btn-primary" : ""}" data-cat="${c.id}">${c.name}</button>`)
+        .join("");
+      el.querySelectorAll("button").forEach((b) =>
+        b.addEventListener("click", () => {
+          activeCategoryId = b.dataset.cat;
+          renderCategoryTabs();
+          renderProductGrid();
+        })
+      );
+    }
+
+    function renderProductGrid() {
+      const el = document.getElementById("product-grid");
+      const list = products.filter((p) => p.category_id === activeCategoryId);
+      if (list.length === 0) {
+        el.innerHTML = `<div class="empty-state">No hay productos en esta categoría.</div>`;
+        return;
+      }
+      el.innerHTML = list
+        .map(
+          (p) => `
+        <div class="product-card" data-product="${p.id}">
+          <div class="p-name">${p.name}</div>
+          <div class="p-price">$${money(p.base_price)}</div>
+        </div>`
+        )
+        .join("");
+      el.querySelectorAll(".product-card").forEach((card) =>
+        card.addEventListener("click", () => openAddItemModal(card.dataset.product))
+      );
+    }
+
+    function openAddItemModal(productId) {
+      const product = products.find((p) => p.id === productId);
+      const hasVariants = product.variants && product.variants.length > 0;
+      const groups = product.modifierGroups || [];
+
+      const variantHtml = hasVariants
+        ? `<div class="field"><label>Variante</label><select id="variant-select">
+            ${product.variants.map((v) => `<option value="${v.id}" data-price="${v.price}">${v.name} - $${money(v.price)}</option>`).join("")}
+          </select></div>`
+        : "";
+
+      const groupsHtml = groups
+        .map(
+          (g) => `
+        <div class="field">
+          <label>${g.name}${g.required ? " (obligatorio)" : ""} — elegí ${g.max === 1 ? "una opción" : `hasta ${g.max}`}</label>
+          ${g.modifiers
+            .map(
+              (m) => `
+            <label class="small" style="display:flex;align-items:center;gap:6px;font-weight:normal">
+              <input type="${g.max === 1 ? "radio" : "checkbox"}" name="group-${g.id}" value="${m.id}" data-price="${m.price}" data-group="${g.id}" data-max="${g.max}" />
+              ${m.name} ${Number(m.price) > 0 ? `(+$${money(m.price)})` : ""}
+            </label>`
+            )
+            .join("")}
+        </div>`
+        )
+        .join("");
+
+      const overlay = showModal(`
+        <h2>${product.name}</h2>
+        ${variantHtml}
+        ${groupsHtml}
+        <div class="field"><label>Cantidad</label><input type="number" id="qty-input" value="1" min="1" /></div>
+        <div class="field"><label>Observaciones</label><textarea id="notes-input" rows="2" placeholder="Ej: sin sal, para llevar aparte..."></textarea></div>
+        <div class="flex-gap mt16">
+          <button class="btn btn-primary" id="confirm-add">Agregar a la comanda</button>
+          <button class="btn" id="cancel-add">Cancelar</button>
+        </div>
+      `);
+
+      overlay.querySelectorAll('input[type=checkbox]').forEach((box) => {
+        box.addEventListener("change", () => {
+          const groupId = box.dataset.group;
+          const max = Number(box.dataset.max);
+          const checked = overlay.querySelectorAll(`input[data-group="${groupId}"]:checked`);
+          if (checked.length > max) box.checked = false;
+        });
+      });
+
+      overlay.querySelector("#cancel-add").addEventListener("click", () => closeModal(overlay));
+      overlay.querySelector("#confirm-add").addEventListener("click", async () => {
+        const variantId = hasVariants ? overlay.querySelector("#variant-select").value : null;
+        const modifierIds = Array.from(overlay.querySelectorAll("input:checked")).map((i) => i.value);
+        const quantity = Number(overlay.querySelector("#qty-input").value) || 1;
+        const notes = overlay.querySelector("#notes-input").value.trim();
+
+        // validar obligatorios
+        for (const g of groups) {
+          if (g.required) {
+            const anyChecked = overlay.querySelectorAll(`input[data-group="${g.id}"]:checked`).length;
+            if (anyChecked === 0) {
+              toast(`Elegí una opción para "${g.name}".`, "error");
+              return;
+            }
+          }
+        }
+
+        try {
+          await api(`/orders/${order.id}/items`, {
+            method: "POST",
+            body: { productId, variantId, quantity, notes: notes || undefined, modifierIds },
+          });
+          closeModal(overlay);
+          await refreshOrder();
+          toast("Producto agregado.", "success");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+
+    function renderTicket() {
+      document.getElementById("order-title").textContent = `Pedido #${order.code} · ${orderTypeLabel(order.type)}`;
+      const subtitleParts = [];
+      if (order.table_name) subtitleParts.push(`${order.room_name || ""} ${order.table_name}`.trim());
+      if (order.customer_name) subtitleParts.push(order.customer_name);
+      if (order.customer_address) subtitleParts.push(order.customer_address);
+      subtitleParts.push(`Mozo: ${order.waiter_name || "-"}`);
+      subtitleParts.push(`Estado: ${order.status}`);
+      document.getElementById("order-subtitle").textContent = subtitleParts.join(" · ");
+
+      const itemsEl = document.getElementById("ticket-items");
+      if (order.items.length === 0) {
+        itemsEl.innerHTML = `<p class="muted small">Todavía no agregaste productos.</p>`;
+      } else {
+        itemsEl.innerHTML = order.items
+          .map((it) => {
+            const modsTxt = it.modifiers.map((m) => m.modifier_name).join(", ");
+            const lineTotal = it.quantity * (Number(it.unit_price) + it.modifiers.reduce((s, m) => s + Number(m.price), 0));
+            return `
+            <div class="ticket-item" style="${it.canceled ? "opacity:.45;text-decoration:line-through" : ""}">
+              <div class="ti-top">
+                <span>${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}</span>
+                <span>$${money(lineTotal)}</span>
+              </div>
+              ${modsTxt ? `<div class="ti-mods">${modsTxt}</div>` : ""}
+              ${it.notes ? `<div class="ti-mods">📝 ${it.notes}</div>` : ""}
+              <div class="ti-mods">
+                ${it.canceled ? `Anulado: ${it.cancel_reason || ""}` : it.sent_at ? `<span class="pill pill-${it.kitchen_status.toLowerCase()}">${it.kitchen_status.replace("_", " ")}</span>` : "Sin enviar a cocina"}
+                ${!it.canceled && canCancelItem ? ` · <a href="#" data-cancel-item="${it.id}">anular</a>` : ""}
+              </div>
+            </div>`;
+          })
+          .join("");
+
+        itemsEl.querySelectorAll("[data-cancel-item]").forEach((link) =>
+          link.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const reason = prompt("Motivo de la anulación:");
+            if (!reason) return;
+            try {
+              await api(`/orders/${order.id}/items/${link.dataset.cancelItem}/cancel`, {
+                method: "POST",
+                body: { reason },
+              });
+              await refreshOrder();
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          })
+        );
+      }
+
+      const totalsEl = document.getElementById("ticket-totals");
+      totalsEl.innerHTML = `
+        <div class="ticket-total-row"><span>Subtotal</span><span>$${money(order.subtotal)}</span></div>
+        ${Number(order.discount_percent) > 0 ? `<div class="ticket-total-row"><span>Descuento (${order.discount_percent}%)</span><span>-$${money(order.subtotal - order.total)}</span></div>` : ""}
+        <div class="ticket-total-row grand"><span>Total</span><span>$${money(order.total)}</span></div>
+        ${order.payments.length > 0 ? `<div class="ticket-total-row small muted"><span>Pagado</span><span>$${money(order.totalPaid)}</span></div>` : ""}
+      `;
+
+      renderActions();
+    }
+
+    function orderTypeLabel(t) {
+      return { SALON: "Salón", RETIRO: "Retiro", DELIVERY: "Delivery" }[t] || t;
+    }
+
+    function renderActions() {
+      const el = document.getElementById("ticket-actions");
+      if (order.status !== "ABIERTO") {
+        el.innerHTML = `<span class="pill pill-entregado">Pedido ${order.status.toLowerCase()}</span>`;
+        return;
+      }
+      const pendingToSend = order.items.some((i) => !i.canceled && !i.sent_at);
+      let html = "";
+      if (pendingToSend) html += `<button class="btn btn-accent" id="send-kitchen-btn">Enviar a cocina</button>`;
+      if (canDiscount) html += `<button class="btn" id="discount-btn">Aplicar descuento</button>`;
+      if (order.table_id) html += `<button class="btn" id="request-bill-btn">Pedir la cuenta</button>`;
+      html += `<button class="btn btn-primary" id="pay-btn">Cobrar</button>`;
+      html += `<button class="btn btn-danger" id="cancel-order-btn">Cancelar pedido</button>`;
+      el.innerHTML = html;
+
+      if (pendingToSend)
+        el.querySelector("#send-kitchen-btn").addEventListener("click", async () => {
+          try {
+            await api(`/orders/${order.id}/send-to-kitchen`, { method: "POST" });
+            toast("Comanda enviada a cocina.", "success");
+            await refreshOrder();
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        });
+
+      if (canDiscount)
+        el.querySelector("#discount-btn").addEventListener("click", () => {
+          const overlay = showModal(`
+            <h2>Aplicar descuento</h2>
+            <div class="field"><label>Porcentaje (%)</label><input type="number" id="discount-percent" min="0" max="100" value="${order.discount_percent}" /></div>
+            <div class="field"><label>Motivo</label><input id="discount-reason" value="${order.discount_reason || ""}" /></div>
+            <button class="btn btn-primary" id="apply-discount">Aplicar</button>
+          `);
+          overlay.querySelector("#apply-discount").addEventListener("click", async () => {
+            try {
+              await api(`/orders/${order.id}/discount`, {
+                method: "POST",
+                body: {
+                  percent: Number(overlay.querySelector("#discount-percent").value),
+                  reason: overlay.querySelector("#discount-reason").value,
+                },
+              });
+              closeModal(overlay);
+              await refreshOrder();
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          });
+        });
+
+      if (order.table_id)
+        el.querySelector("#request-bill-btn").addEventListener("click", async () => {
+          await api(`/orders/${order.id}/request-bill`, { method: "POST" });
+          toast("Se marcó la mesa como pendiente de pago.", "success");
+        });
+
+      el.querySelector("#pay-btn").addEventListener("click", openPayModal);
+
+      el.querySelector("#cancel-order-btn").addEventListener("click", async () => {
+        const reason = prompt("Motivo de la cancelación del pedido:");
+        if (!reason) return;
+        try {
+          await api(`/orders/${order.id}/cancel`, { method: "POST", body: { reason } });
+          toast("Pedido cancelado.", "success");
+          setTimeout(() => (location.href = "/pages/salon.html"), 700);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+
+    function openPayModal() {
+      const remaining = Math.max(0, Number(order.total) - Number(order.totalPaid));
+      const overlay = showModal(`
+        <h2>Cobrar pedido #${order.code}</h2>
+        <p>Total: <strong>$${money(order.total)}</strong> · Pagado: $${money(order.totalPaid)} · Falta: <strong>$${money(remaining)}</strong></p>
+        <div class="field"><label>Medio de pago</label>
+          <select id="pay-method">
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TARJETA">Tarjeta</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="DIGITAL">Pago digital</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </div>
+        <div class="field"><label>Monto</label><input type="number" id="pay-amount" value="${remaining.toFixed(2)}" min="0.01" step="0.01" /></div>
+        <p class="small muted">Podés registrar varios pagos (dividir la cuenta entre distintos medios o personas) hasta cubrir el total.</p>
+        <div class="flex-gap">
+          <button class="btn btn-primary" id="register-pay">Registrar pago</button>
+          ${canClose ? `<button class="btn btn-accent" id="close-order">Registrar y cerrar mesa</button>` : ""}
+        </div>
+      `);
+
+      async function registerPayment() {
+        const method = overlay.querySelector("#pay-method").value;
+        const amount = Number(overlay.querySelector("#pay-amount").value);
+        if (!amount || amount <= 0) {
+          toast("Ingresá un monto válido.", "error");
+          return false;
+        }
+        await api(`/orders/${order.id}/payments`, { method: "POST", body: { method, amount } });
+        return true;
+      }
+
+      overlay.querySelector("#register-pay").addEventListener("click", async () => {
+        try {
+          const ok = await registerPayment();
+          if (!ok) return;
+          closeModal(overlay);
+          await refreshOrder();
+          toast("Pago registrado.", "success");
+          openPayModal2Continue();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+
+      function openPayModal2Continue() {
+        // si aún falta pagar, reabrir el modal actualizado
+        if (Number(order.total) - Number(order.totalPaid) > 0.01) openPayModal();
+      }
+
+      if (canClose) {
+        overlay.querySelector("#close-order").addEventListener("click", async () => {
+          try {
+            const ok = await registerPayment();
+            if (!ok) return;
+            await api(`/orders/${order.id}/close`, { method: "POST" });
+            closeModal(overlay);
+            toast("Pedido cobrado y mesa liberada.", "success");
+            setTimeout(() => (location.href = "/pages/salon.html"), 800);
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        });
+      }
+    }
+
+    async function refreshOrder() {
+      const data = await api(`/orders/${order.id}`);
+      order = data.order;
+      renderTicket();
+    }
+
+    async function init() {
+      if (params.get("orderId")) {
+        const data = await api(`/orders/${params.get("orderId")}`);
+        order = data.order;
+      } else if (params.get("tableId")) {
+        const data = await api("/orders", { method: "POST", body: { type: "SALON", tableId: params.get("tableId") } });
+        order = data.order;
+      } else if (params.get("new")) {
+        document.getElementById("setup-container").style.display = "block";
+        return;
+      } else {
+        location.href = "/pages/salon.html";
+        return;
+      }
+      document.getElementById("pos-container").style.display = "block";
+      await loadMenu();
+      renderTicket();
+      if (params.get("pay")) openPayModal();
+
+      const socket = connectSocket();
+      if (socket) {
+        socket.on("order:updated", (updated) => {
+          if (updated.id === order.id) {
+            order = updated;
+            renderTicket();
+          }
+        });
+      }
+    }
+
+    document.getElementById("order-type").addEventListener("change", (e) => {
+      document.getElementById("address-field").style.display = e.target.value === "DELIVERY" ? "block" : "none";
+    });
+
+    document.getElementById("create-order-btn").addEventListener("click", async () => {
+      const type = document.getElementById("order-type").value;
+      const customerName = document.getElementById("customer-name").value.trim();
+      const customerPhone = document.getElementById("customer-phone").value.trim();
+      const customerAddress = document.getElementById("customer-address").value.trim();
+      if (type === "DELIVERY" && !customerAddress) {
+        toast("Ingresá la dirección de entrega.", "error");
+        return;
+      }
+      try {
+        const data = await api("/orders", {
+          method: "POST",
+          body: { type, customerName, customerPhone, customerAddress },
+        });
+        order = data.order;
+        document.getElementById("setup-container").style.display = "none";
+        document.getElementById("pos-container").style.display = "block";
+        await loadMenu();
+        renderTicket();
+        const socket = connectSocket();
+        if (socket) {
+          socket.on("order:updated", (updated) => {
+            if (updated.id === order.id) {
+              order = updated;
+              renderTicket();
+            }
+          });
+        }
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+
+    init();
+    } // fin del bloque "if (user)"
+  </script>
+</body>
+</html>
