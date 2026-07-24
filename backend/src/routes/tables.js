@@ -41,6 +41,18 @@ router.post(
   })
 );
 
+router.patch(
+  "/rooms/:id",
+  requirePermission("tables:manage"),
+  asyncHandler(async (req, res) => {
+    const schema = z.object({ name: z.string().min(1) });
+    const { name } = schema.parse(req.body);
+    const { rows } = await query(`UPDATE rooms SET name = $1 WHERE id = $2 RETURNING *`, [name, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Salón no encontrado." });
+    res.json({ room: rows[0] });
+  })
+);
+
 router.delete(
   "/rooms/:id",
   requirePermission("tables:manage"),

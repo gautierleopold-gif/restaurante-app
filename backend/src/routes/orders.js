@@ -4,6 +4,7 @@ const { query, withTransaction } = require("../db/pool");
 const { authenticate, requirePermission } = require("../middleware/auth");
 const { asyncHandler } = require("../lib/asyncHandler");
 const { logAction } = require("../lib/audit");
+const { applyStockDelta } = require("../lib/inventory");
 
 const router = express.Router();
 router.use(authenticate);
@@ -57,6 +58,11 @@ async function fetchFullOrder(idOrClient, orderId) {
     [id]
   );
 
+  const { rows: invoiceRows } = await runner.query(
+    `SELECT * FROM invoices WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [id]
+  );
+
   return {
     ...order,
     items: items.map((it) => ({
@@ -65,6 +71,7 @@ async function fetchFullOrder(idOrClient, orderId) {
     })),
     payments,
     totalPaid: payments.reduce((sum, p) => sum + Number(p.amount), 0),
+    invoice: invoiceRows[0] || null,
   };
 }
 
@@ -174,12 +181,13 @@ router.post(
       }
 
       const { rows } = await client.query(
-        `INSERT INTO orders (type, table_id, waiter_id, customer_name, customer_phone, customer_address, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        `INSERT INTO orders (type, table_id, waiter_id, branch_id, customer_name, customer_phone, customer_address, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [
           data.type,
           data.tableId || null,
           req.user.id,
+          req.user.branch_id || null,
           data.customerName || null,
           data.customerPhone || null,
           data.customerAddress || null,
@@ -258,6 +266,16 @@ router.post(
         }
       }
 
+      // Si el producto tiene una receta cargada (Inventario), descuenta el
+      // stock de los insumos correspondientes automáticamente.
+      await applyStockDelta(client, {
+        productId: data.productId,
+        deltaQuantity: data.quantity,
+        orderId: order.id,
+        userId: req.user.id,
+        reason: "Venta",
+      });
+
       await recalcOrderTotals(client, order.id);
     });
 
@@ -282,12 +300,36 @@ router.patch(
     if (keys.length === 0) return res.status(400).json({ error: "Nada para actualizar." });
 
     await withTransaction(async (client) => {
+      let previousQuantity = null;
+      let productId = null;
+      if (fields.quantity !== undefined) {
+        const { rows: existing } = await client.query(
+          `SELECT quantity, product_id FROM order_items WHERE id = $1 AND order_id = $2`,
+          [req.params.itemId, req.params.id]
+        );
+        if (existing[0]) {
+          previousQuantity = existing[0].quantity;
+          productId = existing[0].product_id;
+        }
+      }
+
       const colMap = { quantity: "quantity", notes: "notes" };
       const setClause = keys.map((k, i) => `${colMap[k]} = $${i + 1}`).join(", ");
       await client.query(
         `UPDATE order_items SET ${setClause} WHERE id = $${keys.length + 1} AND order_id = $${keys.length + 2}`,
         [...keys.map((k) => fields[k]), req.params.itemId, req.params.id]
       );
+
+      if (fields.quantity !== undefined && previousQuantity !== null) {
+        await applyStockDelta(client, {
+          productId,
+          deltaQuantity: fields.quantity - previousQuantity,
+          orderId: req.params.id,
+          userId: req.user.id,
+          reason: "Ajuste de cantidad en pedido",
+        });
+      }
+
       await recalcOrderTotals(client, req.params.id);
     });
 
@@ -306,11 +348,23 @@ router.post(
     const { reason } = schema.parse(req.body);
 
     await withTransaction(async (client) => {
-      await client.query(
+      const { rows: updatedRows } = await client.query(
         `UPDATE order_items SET canceled = true, canceled_by_id = $1, cancel_reason = $2
-         WHERE id = $3 AND order_id = $4`,
+         WHERE id = $3 AND order_id = $4 AND canceled = false
+         RETURNING product_id, quantity`,
         [req.user.id, reason, req.params.itemId, req.params.id]
       );
+      // Si realmente se anuló ahora (no estaba ya anulado), repone el stock
+      // de los insumos que se habían descontado al vender este ítem.
+      if (updatedRows[0]) {
+        await applyStockDelta(client, {
+          productId: updatedRows[0].product_id,
+          deltaQuantity: -updatedRows[0].quantity,
+          orderId: req.params.id,
+          userId: req.user.id,
+          reason: "Anulación de ítem",
+        });
+      }
       await recalcOrderTotals(client, req.params.id);
     });
 
@@ -514,6 +568,176 @@ router.post(
     }
     const io = req.app.get("io");
     io.emit("tables:changed");
+    res.json({ ok: true });
+  })
+);
+
+// ---------------------------------------------------------------------------
+// Facturación
+// ---------------------------------------------------------------------------
+const issueInvoiceSchema = z.object({
+  customerName: z.string().optional().nullable(),
+  customerTaxId: z.string().optional().nullable(),
+  customerEmail: z.string().email().optional().nullable(),
+});
+
+// Emite un comprobante/factura para un pedido ya cerrado. El número se arma
+// con el prefijo y el correlativo configurados en Administración →
+// Parámetros de la sucursal, y ese correlativo se incrementa automáticamente.
+router.post(
+  "/:id/invoice",
+  requirePermission("invoices:issue"),
+  asyncHandler(async (req, res) => {
+    const data = issueInvoiceSchema.parse(req.body || {});
+
+    const invoice = await withTransaction(async (client) => {
+      const { rows: orderRows } = await client.query(`SELECT * FROM orders WHERE id = $1`, [req.params.id]);
+      const order = orderRows[0];
+      if (!order) throw Object.assign(new Error("Pedido no encontrado."), { status: 404 });
+      if (order.status !== "CERRADO") {
+        throw Object.assign(new Error("Solo se puede facturar un pedido ya cerrado/cobrado."), { status: 409 });
+      }
+
+      const { rows: existingInvoice } = await client.query(`SELECT * FROM invoices WHERE order_id = $1`, [
+        req.params.id,
+      ]);
+      if (existingInvoice[0]) return existingInvoice[0];
+
+      const branchId = order.branch_id || req.user.branch_id;
+      let branch;
+      if (branchId) {
+        const { rows } = await client.query(`SELECT * FROM branches WHERE id = $1 FOR UPDATE`, [branchId]);
+        branch = rows[0];
+      }
+      if (!branch) {
+        const { rows } = await client.query(`SELECT * FROM branches ORDER BY created_at ASC LIMIT 1 FOR UPDATE`);
+        branch = rows[0];
+      }
+      if (!branch) {
+        throw Object.assign(
+          new Error("No hay una sucursal configurada. Creá al menos una desde Administración."),
+          { status: 409 }
+        );
+      }
+
+      const number = `${branch.invoice_prefix || "A"}-${String(branch.next_invoice_number || 1).padStart(8, "0")}`;
+      await client.query(`UPDATE branches SET next_invoice_number = next_invoice_number + 1 WHERE id = $1`, [
+        branch.id,
+      ]);
+
+      const { rows } = await client.query(
+        `INSERT INTO invoices (order_id, branch_id, number, customer_name, customer_tax_id, customer_email, subtotal, total, issued_by_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [
+          order.id,
+          branch.id,
+          number,
+          data.customerName || order.customer_name || null,
+          data.customerTaxId || null,
+          data.customerEmail || null,
+          order.subtotal,
+          order.total,
+          req.user.id,
+        ]
+      );
+      return rows[0];
+    });
+
+    await logAction({
+      userId: req.user.id,
+      action: "INVOICE_ISSUED",
+      entity: "Order",
+      entityId: req.params.id,
+      details: { number: invoice.number },
+    });
+
+    const fullOrder = await fetchFullOrder(req.params.id);
+    res.status(201).json({ invoice, order: fullOrder });
+  })
+);
+
+router.get(
+  "/:id/invoice/pdf",
+  requirePermission("invoices:issue"),
+  asyncHandler(async (req, res) => {
+    const { buildInvoicePdfBuffer } = require("../lib/invoicePdf");
+    const order = await fetchFullOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado." });
+    if (!order.invoice) return res.status(404).json({ error: "Este pedido todavía no tiene una factura emitida." });
+
+    let branch = null;
+    if (order.branch_id) {
+      const { rows } = await query(`SELECT * FROM branches WHERE id = $1`, [order.branch_id]);
+      branch = rows[0];
+    }
+
+    const pdfBuffer = await buildInvoicePdfBuffer({ branch, order, invoice: order.invoice });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="factura-${order.invoice.number}.pdf"`);
+    res.send(pdfBuffer);
+  })
+);
+
+router.post(
+  "/:id/invoice/email",
+  requirePermission("invoices:issue"),
+  asyncHandler(async (req, res) => {
+    const schema = z.object({ email: z.string().email().optional() });
+    const { email } = schema.parse(req.body || {});
+
+    const order = await fetchFullOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Pedido no encontrado." });
+    if (!order.invoice) return res.status(404).json({ error: "Este pedido todavía no tiene una factura emitida." });
+
+    const targetEmail = email || order.invoice.customer_email;
+    if (!targetEmail) {
+      return res.status(400).json({ error: "Falta un email de destino para enviar la factura." });
+    }
+
+    let branch = null;
+    if (order.branch_id) {
+      const { rows } = await query(`SELECT * FROM branches WHERE id = $1`, [order.branch_id]);
+      branch = rows[0];
+    }
+    if (!branch || !branch.smtp_host || !branch.smtp_user || !branch.smtp_pass) {
+      return res.status(400).json({
+        error:
+          "El envío de facturas por mail no está configurado. Completá los datos de SMTP en Administración → Parámetros.",
+      });
+    }
+
+    const nodemailer = require("nodemailer");
+    const { buildInvoicePdfBuffer } = require("../lib/invoicePdf");
+    const pdfBuffer = await buildInvoicePdfBuffer({ branch, order, invoice: order.invoice });
+
+    const transporter = nodemailer.createTransport({
+      host: branch.smtp_host,
+      port: branch.smtp_port || 587,
+      secure: Number(branch.smtp_port) === 465,
+      auth: { user: branch.smtp_user, pass: branch.smtp_pass },
+    });
+
+    await transporter.sendMail({
+      from: branch.smtp_from || branch.smtp_user,
+      to: targetEmail,
+      subject: `Factura ${order.invoice.number} - ${branch.legal_name || branch.name}`,
+      text: `Adjuntamos el comprobante ${order.invoice.number} correspondiente a tu pedido #${order.code}. ¡Gracias por tu compra!`,
+      attachments: [{ filename: `factura-${order.invoice.number}.pdf`, content: pdfBuffer }],
+    });
+
+    await query(`UPDATE invoices SET emailed_at = now(), customer_email = $1 WHERE id = $2`, [
+      targetEmail,
+      order.invoice.id,
+    ]);
+
+    await logAction({
+      userId: req.user.id,
+      action: "INVOICE_EMAILED",
+      entity: "Order",
+      entityId: req.params.id,
+      details: { email: targetEmail },
+    });
+
     res.json({ ok: true });
   })
 );
