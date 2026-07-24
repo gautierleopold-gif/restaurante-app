@@ -222,6 +222,57 @@ table tr:hover td { background: var(--surface-alt); }
 .table-tile .t-name { font-weight: 700; font-size: 0.95rem; }
 .table-tile .t-cap { font-size: 0.72rem; color: var(--text-muted); }
 
+/* Editor de salón (Administración): mesas arrastrables con el mouse */
+.salon-editor {
+  position: relative;
+  background: var(--surface-alt);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  min-height: 320px;
+  padding: 10px;
+}
+.editable-table {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.editable-table.dragging {
+  cursor: grabbing;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  z-index: 5;
+  transition: none;
+}
+.table-tile-delete {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--danger);
+  font-size: 0.9rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.table-tile-delete:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+/* Inventario */
+.stock-bar { height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; margin-top: 4px; }
+.stock-bar-fill { height: 100%; background: var(--accent); }
+.stock-bar-fill.low { background: var(--danger); }
+.low-stock-badge { color: var(--danger); font-weight: 600; }
+
+/* Permisos: tabla con checkboxes por rol */
+.permissions-table th, .permissions-table td { text-align: center; }
+.permissions-table td:first-child, .permissions-table th:first-child { text-align: left; }
+.permissions-table input[type=checkbox] { width: auto; cursor: pointer; }
+.permissions-table .perm-admin { color: var(--text-muted); font-size: 0.75rem; }
+
 /* POS */
 .pos-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
 .category-tabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 4px; }
