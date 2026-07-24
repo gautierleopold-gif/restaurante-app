@@ -35,6 +35,7 @@ function renderNav() {
       <div class="userbox">
         <span>${user.name}</span>
         <span class="badge-role">${ROLE_LABELS[user.role] || user.role}</span>
+        <button class="btn btn-ghost btn-sm" id="change-password-btn">Cambiar contraseña</button>
         <button class="btn btn-ghost btn-sm" id="logout-btn">Salir</button>
       </div>
     </div>
@@ -42,6 +43,37 @@ function renderNav() {
   document.getElementById("logout-btn").addEventListener("click", () => {
     clearSession();
     location.href = "/index.html";
+  });
+  document.getElementById("change-password-btn").addEventListener("click", openChangePasswordModal);
+}
+
+function openChangePasswordModal() {
+  const overlay = showModal(`
+    <h2>Cambiar mi contraseña</h2>
+    <div class="field"><label>Contraseña actual</label><input id="cp-current" type="password" /></div>
+    <div class="field"><label>Contraseña nueva (mínimo 6 caracteres)</label><input id="cp-new" type="password" /></div>
+    <div class="field"><label>Repetir contraseña nueva</label><input id="cp-new2" type="password" /></div>
+    <button class="btn btn-primary" id="cp-save">Guardar</button>
+  `);
+  overlay.querySelector("#cp-save").addEventListener("click", async () => {
+    const currentPassword = overlay.querySelector("#cp-current").value;
+    const newPassword = overlay.querySelector("#cp-new").value;
+    const newPassword2 = overlay.querySelector("#cp-new2").value;
+    if (newPassword.length < 6) {
+      toast("La contraseña nueva debe tener al menos 6 caracteres.", "error");
+      return;
+    }
+    if (newPassword !== newPassword2) {
+      toast("Las contraseñas nuevas no coinciden.", "error");
+      return;
+    }
+    try {
+      await api("/auth/me/password", { method: "POST", body: { currentPassword, newPassword } });
+      closeModal(overlay);
+      toast("Contraseña actualizada.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
   });
 }
 
