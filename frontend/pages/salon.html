@@ -63,12 +63,13 @@
         floor.innerHTML = `<div class="empty-state">No hay mesas configuradas en este salón todavía. Podés crearlas desde Administración → Salón y mesas.</div>`;
         return;
       }
-      const CELL_W = 130;
-      const CELL_H = 110;
+      // pos_x/pos_y son coordenadas libres en píxeles dentro del plano (se
+      // editan arrastrando las mesas con el mouse desde Administración →
+      // Salón y mesas), no una grilla de celdas.
       floor.innerHTML = room.tables
         .map((t) => {
-          const left = 10 + t.pos_x * CELL_W;
-          const top = 10 + t.pos_y * CELL_H;
+          const left = t.pos_x;
+          const top = t.pos_y;
           return `
           <div class="table-tile ${t.status.toLowerCase()}" style="left:${left}px; top:${top}px" data-table="${t.id}">
             <div class="t-name">${t.name}</div>

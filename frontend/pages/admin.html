@@ -16,7 +16,12 @@
       <button data-tab="adicionales">Adicionales</button>
       <button data-tab="estaciones">Estaciones de cocina</button>
       <button data-tab="salon">Salón y mesas</button>
+      <button data-tab="inventario">Inventario</button>
+      <button data-tab="reportes">Reportes</button>
       <button data-tab="usuarios" id="tab-usuarios" style="display:none">Usuarios</button>
+      <button data-tab="permisos" id="tab-permisos" style="display:none">Permisos</button>
+      <button data-tab="parametros" id="tab-parametros" style="display:none">Parámetros</button>
+      <button data-tab="auditoria" id="tab-auditoria" style="display:none">Auditoría</button>
     </div>
     <div id="tab-content"></div>
   </div>
@@ -32,9 +37,15 @@
     if (user) {
     renderNav();
     const canManageUsers = ["ADMIN", "DUENIO"].includes(user.role);
-    if (canManageUsers) document.getElementById("tab-usuarios").style.display = "inline-block";
+    if (canManageUsers) {
+      document.getElementById("tab-usuarios").style.display = "inline-block";
+      document.getElementById("tab-permisos").style.display = "inline-block";
+      document.getElementById("tab-parametros").style.display = "inline-block";
+      document.getElementById("tab-auditoria").style.display = "inline-block";
+    }
 
     let categories = [], stations = [], modifierGroups = [], products = [], rooms = [], users = [];
+    let ingredients = [], permissionGroups = [], settings = null, auditLogs = [];
 
     async function loadAll() {
       const [c, s, mg, p, r] = await Promise.all([
@@ -49,6 +60,24 @@
       if (canManageUsers) {
         const u = await api("/auth/users");
         users = u.users;
+      }
+      try {
+        const inv = await api("/inventory/ingredients");
+        ingredients = inv.ingredients;
+      } catch (err) { ingredients = []; }
+      if (canManageUsers) {
+        try {
+          const perms = await api("/permissions");
+          permissionGroups = perms.groups;
+        } catch (err) { permissionGroups = []; }
+        try {
+          const s2 = await api("/settings");
+          settings = s2.settings;
+        } catch (err) { settings = null; }
+        try {
+          const a = await api("/audit?limit=150");
+          auditLogs = a.logs;
+        } catch (err) { auditLogs = []; }
       }
     }
 
@@ -77,14 +106,16 @@
           <button class="btn btn-primary" id="save-cat">Guardar</button>`);
         overlay.querySelector("#save-cat").addEventListener("click", async () => {
           try {
-            await api("/menu/categories", { method: "POST", body: { name: overlay.querySelector("#cat-name").value, order: Number(overlay.querySelector("#cat-order").value) } });
+            await apiWithOverride("/menu/categories", { method: "POST", body: { name: overlay.querySelector("#cat-name").value, order: Number(overlay.querySelector("#cat-order").value) } }, "menu:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
       });
       document.querySelectorAll("[data-toggle-cat]").forEach(btn => btn.addEventListener("click", async () => {
-        await api(`/menu/categories/${btn.dataset.toggleCat}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } });
-        await refresh();
+        try {
+          await apiWithOverride(`/menu/categories/${btn.dataset.toggleCat}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } }, "menu:manage");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
       }));
     }
 
@@ -110,14 +141,16 @@
         const overlay = showModal(`<h2>Nueva estación</h2><div class="field"><label>Nombre</label><input id="station-name" /></div><button class="btn btn-primary" id="save-station">Guardar</button>`);
         overlay.querySelector("#save-station").addEventListener("click", async () => {
           try {
-            await api("/menu/stations", { method: "POST", body: { name: overlay.querySelector("#station-name").value } });
+            await apiWithOverride("/menu/stations", { method: "POST", body: { name: overlay.querySelector("#station-name").value } }, "menu:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
       });
       document.querySelectorAll("[data-toggle-station]").forEach(btn => btn.addEventListener("click", async () => {
-        await api(`/menu/stations/${btn.dataset.toggleStation}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } });
-        await refresh();
+        try {
+          await apiWithOverride(`/menu/stations/${btn.dataset.toggleStation}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } }, "menu:manage");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
       }));
     }
 
@@ -152,13 +185,13 @@
           const lines = overlay.querySelector("#mg-options").value.split("\n").map(l => l.trim()).filter(Boolean);
           const modifiers = lines.map(l => { const [name, price] = l.split(","); return { name: (name || "").trim(), price: Number(price || 0) }; });
           try {
-            await api("/menu/modifier-groups", { method: "POST", body: {
+            await apiWithOverride("/menu/modifier-groups", { method: "POST", body: {
               name: overlay.querySelector("#mg-name").value,
               min: Number(overlay.querySelector("#mg-min").value),
               max: Number(overlay.querySelector("#mg-max").value),
               required: overlay.querySelector("#mg-required").checked,
               modifiers,
-            }});
+            }}, "menu:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
@@ -170,9 +203,9 @@
           <button class="btn btn-primary" id="save-mod">Guardar</button>`);
         overlay.querySelector("#save-mod").addEventListener("click", async () => {
           try {
-            await api(`/menu/modifier-groups/${btn.dataset.addModifier}/modifiers`, { method: "POST", body: {
+            await apiWithOverride(`/menu/modifier-groups/${btn.dataset.addModifier}/modifiers`, { method: "POST", body: {
               name: overlay.querySelector("#mod-name").value, price: Number(overlay.querySelector("#mod-price").value)
-            }});
+            }}, "menu:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
@@ -191,7 +224,10 @@
             ${products.map(p => `<tr>
               <td>${p.name}</td><td>${p.category_name}</td><td>${p.station_name || "-"}</td><td>$${money(p.base_price)}</td>
               <td><span class="pill pill-${p.active ? "libre" : "pendiente_pago"}">${p.active ? "Activo" : "Inactivo"}</span></td>
-              <td><button class="btn btn-sm" data-toggle-product="${p.id}" data-active="${p.active}">${p.active ? "Desactivar" : "Activar"}</button></td>
+              <td class="flex-gap">
+                <button class="btn btn-sm" data-toggle-product="${p.id}" data-active="${p.active}">${p.active ? "Desactivar" : "Activar"}</button>
+                <button class="btn btn-sm" data-edit-recipe="${p.id}" data-name="${p.name}">Receta</button>
+              </td>
             </tr>`).join("")}
           </tbody></table>
         </div>`;
@@ -216,23 +252,76 @@
           const variants = lines.map(l => { const [name, price] = l.split(","); return { name: (name || "").trim(), price: Number(price || 0) }; });
           const modifierGroupIds = Array.from(overlay.querySelectorAll(".prod-mg:checked")).map(i => i.value);
           try {
-            await api("/menu/products", { method: "POST", body: {
+            await apiWithOverride("/menu/products", { method: "POST", body: {
               name: overlay.querySelector("#prod-name").value,
               description: overlay.querySelector("#prod-desc").value || null,
               categoryId: overlay.querySelector("#prod-cat").value,
               stationId: overlay.querySelector("#prod-station").value || null,
               basePrice: Number(overlay.querySelector("#prod-price").value),
               variants, modifierGroupIds,
-            }});
+            }}, "menu:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
       });
       document.querySelectorAll("[data-toggle-product]").forEach(btn => btn.addEventListener("click", async () => {
         const active = btn.dataset.active !== "true";
-        await api(`/menu/products/${btn.dataset.toggleProduct}`, { method: "PATCH", body: { active } });
-        await refresh();
+        try {
+          await apiWithOverride(`/menu/products/${btn.dataset.toggleProduct}`, { method: "PATCH", body: { active } }, "menu:manage");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
       }));
+      document.querySelectorAll("[data-edit-recipe]").forEach(btn => btn.addEventListener("click", () => openRecipeEditor(btn.dataset.editRecipe, btn.dataset.name)));
+    }
+
+    // Receta de un producto: qué insumos del inventario consume y en qué
+    // cantidad, para poder descontar el stock automáticamente al vender.
+    async function openRecipeEditor(productId, productName) {
+      if (ingredients.length === 0) {
+        const overlay = showModal(`<h2>Receta de ${productName}</h2>
+          <p class="muted small">Todavía no cargaste insumos en Inventario. Andá a la pestaña "Inventario" para crear alguno primero.</p>`);
+        return;
+      }
+      let recipe = [];
+      try {
+        const data = await api(`/inventory/recipes/${productId}`);
+        recipe = data.recipe;
+      } catch (err) { /* sin receta todavía */ }
+
+      const rowHtml = (ingredientId, quantity) => `
+        <div class="flex-gap mb8 recipe-row">
+          <select class="recipe-ingredient" style="flex:2">
+            ${ingredients.map(i => `<option value="${i.id}" ${i.id === ingredientId ? "selected" : ""}>${i.name} (${i.unit})</option>`).join("")}
+          </select>
+          <input type="number" step="0.001" class="recipe-qty" value="${quantity ?? 1}" style="flex:1" />
+          <button class="btn btn-sm btn-danger" data-remove-row type="button">×</button>
+        </div>`;
+
+      const overlay = showModal(`<h2>Receta de ${productName}</h2>
+        <p class="small muted">Cantidad de cada insumo que se consume por cada unidad vendida de este producto.</p>
+        <div id="recipe-rows">${recipe.map(r => rowHtml(r.ingredient_id, r.quantity)).join("") || rowHtml(ingredients[0].id, 1)}</div>
+        <button class="btn btn-sm" id="add-recipe-row" type="button">+ Agregar insumo</button>
+        <div class="mt16"><button class="btn btn-primary" id="save-recipe">Guardar receta</button></div>`);
+
+      function wireRemove() {
+        overlay.querySelectorAll("[data-remove-row]").forEach(b => b.addEventListener("click", () => b.closest(".recipe-row").remove()));
+      }
+      wireRemove();
+      overlay.querySelector("#add-recipe-row").addEventListener("click", () => {
+        overlay.querySelector("#recipe-rows").insertAdjacentHTML("beforeend", rowHtml(ingredients[0].id, 1));
+        wireRemove();
+      });
+      overlay.querySelector("#save-recipe").addEventListener("click", async () => {
+        const items = Array.from(overlay.querySelectorAll(".recipe-row")).map(row => ({
+          ingredientId: row.querySelector(".recipe-ingredient").value,
+          quantity: Number(row.querySelector(".recipe-qty").value),
+        })).filter(i => i.quantity > 0);
+        try {
+          await apiWithOverride(`/inventory/recipes/${productId}`, { method: "PUT", body: { items } }, "inventory:manage");
+          closeModal(overlay);
+          toast("Receta guardada.", "success");
+        } catch (err) { toast(err.message, "error"); }
+      });
     }
 
     // ---------------------------------------------------------------------
@@ -241,18 +330,25 @@
     function renderSalon() {
       return `
         <div class="flex-between mb8"><h3 style="margin:0">Salones</h3><button class="btn btn-primary btn-sm" id="add-room">+ Nuevo salón</button></div>
+        <p class="small muted">Arrastrá las mesas con el mouse para acomodarlas como quieras; la posición se guarda sola al soltarlas.</p>
         ${rooms.map(r => `
           <div class="card mb16">
-            <div class="flex-between mb8"><strong>${r.name}</strong><button class="btn btn-sm" data-add-table="${r.id}">+ Agregar mesa</button></div>
-            <table><thead><tr><th>Mesa</th><th>Capacidad</th><th>Pos X</th><th>Pos Y</th><th></th></tr></thead>
-            <tbody>
-              ${r.tables.map(t => `<tr>
-                <td>${t.name}</td><td>${t.capacity}</td>
-                <td><input type="number" value="${t.pos_x}" class="table-pos" data-table="${t.id}" data-field="posX" style="width:70px" /></td>
-                <td><input type="number" value="${t.pos_y}" class="table-pos" data-table="${t.id}" data-field="posY" style="width:70px" /></td>
-                <td><button class="btn btn-sm btn-danger" data-delete-table="${t.id}">Eliminar</button></td>
-              </tr>`).join("")}
-            </tbody></table>
+            <div class="flex-between mb8">
+              <strong>${r.name}</strong>
+              <div class="flex-gap">
+                <button class="btn btn-sm" data-rename-room="${r.id}" data-name="${r.name}">Renombrar</button>
+                <button class="btn btn-sm btn-danger" data-delete-room="${r.id}">Eliminar salón</button>
+                <button class="btn btn-sm btn-primary" data-add-table="${r.id}">+ Agregar mesa</button>
+              </div>
+            </div>
+            <div class="salon-editor" data-room-canvas="${r.id}">
+              ${r.tables.length === 0 ? `<div class="empty-state">Sin mesas todavía.</div>` : r.tables.map(t => `
+                <div class="table-tile editable-table" style="left:${t.pos_x}px; top:${t.pos_y}px" data-table="${t.id}" data-pos-x="${t.pos_x}" data-pos-y="${t.pos_y}">
+                  <div class="t-name">${t.name}</div>
+                  <div class="t-cap">${t.capacity} pers.</div>
+                  <button class="table-tile-delete" data-delete-table="${t.id}" title="Eliminar mesa">×</button>
+                </div>`).join("")}
+            </div>
           </div>`).join("")}
       `;
     }
@@ -260,41 +356,104 @@
       document.getElementById("add-room").addEventListener("click", () => {
         const overlay = showModal(`<h2>Nuevo salón</h2><div class="field"><label>Nombre</label><input id="room-name" /></div><button class="btn btn-primary" id="save-room">Guardar</button>`);
         overlay.querySelector("#save-room").addEventListener("click", async () => {
-          await api("/rooms", { method: "POST", body: { name: overlay.querySelector("#room-name").value } });
-          closeModal(overlay); await refresh();
+          try {
+            await apiWithOverride("/rooms", { method: "POST", body: { name: overlay.querySelector("#room-name").value } }, "tables:manage");
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
         });
       });
-      document.querySelectorAll("[data-add-table]").forEach(btn => btn.addEventListener("click", () => {
-        const overlay = showModal(`<h2>Nueva mesa</h2>
-          <div class="field"><label>Nombre</label><input id="table-name" placeholder="Mesa 6" /></div>
-          <div class="grid grid-2">
-            <div class="field"><label>Capacidad</label><input id="table-cap" type="number" value="4" /></div>
-            <div class="field"><label>&nbsp;</label></div>
-          </div>
-          <div class="grid grid-2">
-            <div class="field"><label>Posición X</label><input id="table-x" type="number" value="0" /></div>
-            <div class="field"><label>Posición Y</label><input id="table-y" type="number" value="0" /></div>
-          </div>
-          <button class="btn btn-primary" id="save-table">Guardar</button>`);
-        overlay.querySelector("#save-table").addEventListener("click", async () => {
+      document.querySelectorAll("[data-rename-room]").forEach(btn => btn.addEventListener("click", () => {
+        const overlay = showModal(`<h2>Renombrar salón</h2><div class="field"><label>Nombre</label><input id="room-new-name" value="${btn.dataset.name}" /></div><button class="btn btn-primary" id="save-room-name">Guardar</button>`);
+        overlay.querySelector("#save-room-name").addEventListener("click", async () => {
           try {
-            await api("/tables", { method: "POST", body: {
-              roomId: btn.dataset.addTable, name: overlay.querySelector("#table-name").value,
-              capacity: Number(overlay.querySelector("#table-cap").value),
-              posX: Number(overlay.querySelector("#table-x").value), posY: Number(overlay.querySelector("#table-y").value),
-            }});
+            await apiWithOverride(`/rooms/${btn.dataset.renameRoom}`, { method: "PATCH", body: { name: overlay.querySelector("#room-new-name").value } }, "tables:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
       }));
-      document.querySelectorAll(".table-pos").forEach(input => input.addEventListener("change", async () => {
-        await api(`/tables/${input.dataset.table}`, { method: "PATCH", body: { [input.dataset.field]: Number(input.value) } });
+      document.querySelectorAll("[data-delete-room]").forEach(btn => btn.addEventListener("click", async () => {
+        if (!confirm("¿Eliminar este salón y todas sus mesas?")) return;
+        try {
+          await apiWithOverride(`/rooms/${btn.dataset.deleteRoom}`, { method: "DELETE" }, "tables:manage");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
       }));
-      document.querySelectorAll("[data-delete-table]").forEach(btn => btn.addEventListener("click", async () => {
+      document.querySelectorAll("[data-add-table]").forEach(btn => btn.addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nueva mesa</h2>
+          <div class="field"><label>Nombre</label><input id="table-name" placeholder="Mesa 6" /></div>
+          <div class="field"><label>Capacidad</label><input id="table-cap" type="number" value="4" /></div>
+          <p class="small muted">Después de crearla podés arrastrarla a la posición que quieras.</p>
+          <button class="btn btn-primary" id="save-table">Guardar</button>`);
+        overlay.querySelector("#save-table").addEventListener("click", async () => {
+          try {
+            await apiWithOverride("/tables", { method: "POST", body: {
+              roomId: btn.dataset.addTable, name: overlay.querySelector("#table-name").value,
+              capacity: Number(overlay.querySelector("#table-cap").value),
+              posX: 20, posY: 20,
+            }}, "tables:manage");
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      }));
+      document.querySelectorAll("[data-delete-table]").forEach(btn => btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
         if (!confirm("¿Eliminar esta mesa?")) return;
-        await api(`/tables/${btn.dataset.deleteTable}`, { method: "DELETE" });
-        await refresh();
+        try {
+          await apiWithOverride(`/tables/${btn.dataset.deleteTable}`, { method: "DELETE" }, "tables:manage");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
       }));
+      wireTableDragging();
+    }
+
+    // Arrastre de mesas con el mouse/touch (pointer events cubre ambos) en
+    // vez de tener que tipear la posición en píxeles a mano.
+    function wireTableDragging() {
+      document.querySelectorAll(".editable-table").forEach((tile) => {
+        let dragging = false;
+        let startX, startY, origLeft, origTop;
+
+        tile.addEventListener("pointerdown", (e) => {
+          if (e.target.closest(".table-tile-delete")) return;
+          dragging = true;
+          tile.setPointerCapture(e.pointerId);
+          tile.classList.add("dragging");
+          startX = e.clientX;
+          startY = e.clientY;
+          origLeft = Number(tile.dataset.posX);
+          origTop = Number(tile.dataset.posY);
+        });
+
+        tile.addEventListener("pointermove", (e) => {
+          if (!dragging) return;
+          const canvas = tile.closest(".salon-editor");
+          const newLeft = Math.max(0, Math.min(origLeft + (e.clientX - startX), canvas.clientWidth - tile.offsetWidth));
+          const newTop = Math.max(0, Math.min(origTop + (e.clientY - startY), canvas.clientHeight - tile.offsetHeight));
+          tile.style.left = `${newLeft}px`;
+          tile.style.top = `${newTop}px`;
+          tile.dataset.pendingX = Math.round(newLeft);
+          tile.dataset.pendingY = Math.round(newTop);
+        });
+
+        async function endDrag(e) {
+          if (!dragging) return;
+          dragging = false;
+          tile.classList.remove("dragging");
+          const posX = tile.dataset.pendingX ? Number(tile.dataset.pendingX) : origLeft;
+          const posY = tile.dataset.pendingY ? Number(tile.dataset.pendingY) : origTop;
+          tile.dataset.posX = posX;
+          tile.dataset.posY = posY;
+          delete tile.dataset.pendingX;
+          delete tile.dataset.pendingY;
+          try {
+            await apiWithOverride(`/tables/${tile.dataset.table}`, { method: "PATCH", body: { posX, posY } }, "tables:manage");
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        }
+        tile.addEventListener("pointerup", endDrag);
+        tile.addEventListener("pointercancel", endDrag);
+      });
     }
 
     // ---------------------------------------------------------------------
@@ -305,10 +464,11 @@
       return `
         <div class="card mb16">
           <div class="flex-between mb8"><h3 style="margin:0">Usuarios</h3><button class="btn btn-primary btn-sm" id="add-user">+ Nuevo usuario</button></div>
+          <p class="small muted">Para crear rápidamente otro Encargado, usá "+ Nuevo usuario" y elegí el rol Encargado.</p>
           <table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             ${users.map(u => `<tr>
-              <td>${u.name}</td><td>${u.email}</td><td>${u.role}</td>
+              <td>${u.name}</td><td>${u.email}</td><td>${ROLE_LABELS[u.role] || u.role}</td>
               <td><span class="pill pill-${u.active ? "libre" : "pendiente_pago"}">${u.active ? "Activo" : "Inactivo"}</span></td>
               <td><button class="btn btn-sm" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? "Desactivar" : "Activar"}</button></td>
             </tr>`).join("")}
@@ -321,25 +481,288 @@
           <div class="field"><label>Nombre</label><input id="user-name" /></div>
           <div class="field"><label>Email</label><input id="user-email" type="email" /></div>
           <div class="field"><label>Contraseña</label><input id="user-password" type="password" /></div>
-          <div class="field"><label>Rol</label><select id="user-role">${ROLE_OPTIONS.map(r => `<option value="${r}">${r}</option>`).join("")}</select></div>
+          <div class="field"><label>Rol</label><select id="user-role">${ROLE_OPTIONS.map(r => `<option value="${r}">${ROLE_LABELS[r]}</option>`).join("")}</select></div>
           <button class="btn btn-primary" id="save-user">Guardar</button>`);
         overlay.querySelector("#save-user").addEventListener("click", async () => {
           try {
-            await api("/auth/users", { method: "POST", body: {
+            await apiWithOverride("/auth/users", { method: "POST", body: {
               name: overlay.querySelector("#user-name").value,
               email: overlay.querySelector("#user-email").value,
               password: overlay.querySelector("#user-password").value,
               role: overlay.querySelector("#user-role").value,
-            }});
+            }}, "users:manage");
             closeModal(overlay); await refresh();
           } catch (err) { toast(err.message, "error"); }
         });
       });
       document.querySelectorAll("[data-toggle-user]").forEach(btn => btn.addEventListener("click", async () => {
-        await api(`/auth/users/${btn.dataset.toggleUser}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } });
-        await refresh();
+        try {
+          await apiWithOverride(`/auth/users/${btn.dataset.toggleUser}`, { method: "PATCH", body: { active: btn.dataset.active !== "true" } }, "users:manage");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
       }));
     }
+
+    // ---------------------------------------------------------------------
+    // Inventario
+    // ---------------------------------------------------------------------
+    function renderInventario() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Insumos</h3><button class="btn btn-primary btn-sm" id="add-ingredient">+ Nuevo insumo</button></div>
+          <p class="small muted">El stock se descuenta solo cuando un producto tiene una receta cargada (botón "Receta" en la pestaña Productos).</p>
+          <table><thead><tr><th>Nombre</th><th>Unidad</th><th>Stock</th><th>Mínimo</th><th>Costo/unidad</th><th></th></tr></thead>
+          <tbody>
+            ${ingredients.map(i => `<tr>
+              <td>${i.name}${i.low_stock ? ` <span class="low-stock-badge">⚠ bajo stock</span>` : ""}</td>
+              <td>${i.unit}</td>
+              <td>${Number(i.stock).toLocaleString("es-AR")}
+                <div class="stock-bar"><div class="stock-bar-fill ${i.low_stock ? "low" : ""}" style="width:${Math.min(100, i.min_stock > 0 ? (i.stock / (i.min_stock * 2)) * 100 : 100)}%"></div></div>
+              </td>
+              <td>${Number(i.min_stock).toLocaleString("es-AR")}</td>
+              <td>$${money(i.cost_per_unit)}</td>
+              <td class="flex-gap">
+                <button class="btn btn-sm" data-adjust-stock="${i.id}" data-name="${i.name}">Ajustar stock</button>
+                <button class="btn btn-sm" data-edit-ingredient="${i.id}">Editar</button>
+              </td>
+            </tr>`).join("") || `<tr><td colspan="6" class="muted small">Todavía no cargaste insumos.</td></tr>`}
+          </tbody></table>
+        </div>`;
+    }
+    function wireInventario() {
+      document.getElementById("add-ingredient").addEventListener("click", () => {
+        const overlay = showModal(`<h2>Nuevo insumo</h2>
+          <div class="field"><label>Nombre</label><input id="ing-name" placeholder="Ej: Carne de res" /></div>
+          <div class="grid grid-2">
+            <div class="field"><label>Unidad</label><input id="ing-unit" placeholder="kg, L, unidad..." value="unidad" /></div>
+            <div class="field"><label>Costo por unidad</label><input id="ing-cost" type="number" step="0.01" value="0" /></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="field"><label>Stock inicial</label><input id="ing-stock" type="number" step="0.001" value="0" /></div>
+            <div class="field"><label>Stock mínimo (alerta)</label><input id="ing-min" type="number" step="0.001" value="0" /></div>
+          </div>
+          <button class="btn btn-primary" id="save-ingredient">Guardar</button>`);
+        overlay.querySelector("#save-ingredient").addEventListener("click", async () => {
+          try {
+            await apiWithOverride("/inventory/ingredients", { method: "POST", body: {
+              name: overlay.querySelector("#ing-name").value,
+              unit: overlay.querySelector("#ing-unit").value || "unidad",
+              costPerUnit: Number(overlay.querySelector("#ing-cost").value),
+              stock: Number(overlay.querySelector("#ing-stock").value),
+              minStock: Number(overlay.querySelector("#ing-min").value),
+            }}, "inventory:manage");
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-edit-ingredient]").forEach(btn => btn.addEventListener("click", () => {
+        const ing = ingredients.find(i => i.id === btn.dataset.editIngredient);
+        const overlay = showModal(`<h2>Editar ${ing.name}</h2>
+          <div class="field"><label>Nombre</label><input id="ing-name" value="${ing.name}" /></div>
+          <div class="grid grid-2">
+            <div class="field"><label>Unidad</label><input id="ing-unit" value="${ing.unit}" /></div>
+            <div class="field"><label>Costo por unidad</label><input id="ing-cost" type="number" step="0.01" value="${ing.cost_per_unit}" /></div>
+          </div>
+          <div class="field"><label>Stock mínimo (alerta)</label><input id="ing-min" type="number" step="0.001" value="${ing.min_stock}" /></div>
+          <button class="btn btn-primary" id="save-ingredient-edit">Guardar</button>`);
+        overlay.querySelector("#save-ingredient-edit").addEventListener("click", async () => {
+          try {
+            await apiWithOverride(`/inventory/ingredients/${ing.id}`, { method: "PATCH", body: {
+              name: overlay.querySelector("#ing-name").value,
+              unit: overlay.querySelector("#ing-unit").value,
+              costPerUnit: Number(overlay.querySelector("#ing-cost").value),
+              minStock: Number(overlay.querySelector("#ing-min").value),
+            }}, "inventory:manage");
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      }));
+      document.querySelectorAll("[data-adjust-stock]").forEach(btn => btn.addEventListener("click", () => {
+        const overlay = showModal(`<h2>Ajustar stock de ${btn.dataset.name}</h2>
+          <div class="field"><label>Tipo de movimiento</label>
+            <select id="mv-type">
+              <option value="ENTRADA">Entrada (compra)</option>
+              <option value="SALIDA">Salida (merma / rotura)</option>
+              <option value="AJUSTE">Ajuste a un valor exacto (ej. inventario físico)</option>
+            </select>
+          </div>
+          <div class="field"><label>Cantidad</label><input id="mv-qty" type="number" step="0.001" value="0" /></div>
+          <div class="field"><label>Motivo (opcional)</label><input id="mv-reason" /></div>
+          <button class="btn btn-primary" id="save-movement">Guardar</button>`);
+        overlay.querySelector("#save-movement").addEventListener("click", async () => {
+          try {
+            await apiWithOverride(`/inventory/ingredients/${btn.dataset.adjustStock}/movements`, { method: "POST", body: {
+              type: overlay.querySelector("#mv-type").value,
+              quantity: Number(overlay.querySelector("#mv-qty").value),
+              reason: overlay.querySelector("#mv-reason").value || null,
+            }}, "inventory:manage");
+            closeModal(overlay); await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Permisos
+    // ---------------------------------------------------------------------
+    const CONFIGURABLE_ROLES = ["DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"];
+    function renderPermisos() {
+      return `
+        <p class="small muted">Activá o desactivá qué puede hacer cada rol. El rol Administrador siempre tiene acceso a todo (para que nunca se pierda el control de la app), por eso no aparece en la tabla.</p>
+        ${permissionGroups.map(group => `
+          <div class="card mb16">
+            <h3 style="margin-top:0">${group.label}</h3>
+            <table class="permissions-table"><thead><tr><th>Permiso</th>${CONFIGURABLE_ROLES.map(r => `<th>${ROLE_LABELS[r]}</th>`).join("")}</tr></thead>
+            <tbody>
+              ${group.permissions.map(p => `<tr>
+                <td>${p.label}</td>
+                ${CONFIGURABLE_ROLES.map(r => `<td><input type="checkbox" data-perm="${p.key}" data-role="${r}" ${p.roles[r] ? "checked" : ""} /></td>`).join("")}
+              </tr>`).join("")}
+            </tbody></table>
+          </div>`).join("")}
+      `;
+    }
+    function wirePermisos() {
+      document.querySelectorAll("[data-perm]").forEach(box => box.addEventListener("change", async () => {
+        try {
+          await apiWithOverride("/permissions", { method: "PUT", body: {
+            role: box.dataset.role, permission: box.dataset.perm, allowed: box.checked,
+          }}, "permissions:manage");
+          toast("Permiso actualizado.", "success");
+        } catch (err) {
+          box.checked = !box.checked;
+          toast(err.message, "error");
+        }
+      }));
+    }
+
+    // ---------------------------------------------------------------------
+    // Parámetros del restaurante
+    // ---------------------------------------------------------------------
+    function renderParametros() {
+      const s = settings || {};
+      return `
+        <div class="card mb16">
+          <h3 style="margin-top:0">Datos del negocio</h3>
+          <div class="grid grid-2">
+            <div class="field"><label>Nombre comercial</label><input id="set-name" value="${s.name || ""}" /></div>
+            <div class="field"><label>Razón social (para la factura)</label><input id="set-legal-name" value="${s.legal_name || ""}" /></div>
+          </div>
+          <div class="grid grid-2">
+            <div class="field"><label>NIT / identificación fiscal</label><input id="set-tax-id" value="${s.tax_id || ""}" /></div>
+            <div class="field"><label>Moneda</label><input id="set-currency" value="${s.currency || "ARS"}" /></div>
+          </div>
+          <div class="field"><label>Dirección fiscal</label><input id="set-fiscal-address" value="${s.fiscal_address || ""}" /></div>
+          <div class="field"><label>Teléfono</label><input id="set-phone" value="${s.phone || ""}" /></div>
+          <div class="field"><label>Prefijo de comprobante (ej: "A")</label><input id="set-invoice-prefix" value="${s.invoice_prefix || "A"}" /></div>
+          <p class="small muted">Próximo número de comprobante: ${s.next_invoice_number ?? 1} (se incrementa solo cada vez que se emite una factura).</p>
+          <button class="btn btn-primary" id="save-settings-1">Guardar datos del negocio</button>
+        </div>
+        <div class="card mb16">
+          <h3 style="margin-top:0">Envío de facturas por mail (SMTP)</h3>
+          <p class="small muted">Opcional. Completá estos datos si querés poder mandar la factura por mail directamente desde un pedido, además de descargarla en PDF. Si no lo configurás, siempre podés descargar el PDF igual.</p>
+          <div class="grid grid-2">
+            <div class="field"><label>Host SMTP</label><input id="set-smtp-host" value="${s.smtp_host || ""}" placeholder="smtp.gmail.com" /></div>
+            <div class="field"><label>Puerto</label><input id="set-smtp-port" type="number" value="${s.smtp_port || 587}" /></div>
+          </div>
+          <div class="field"><label>Usuario SMTP</label><input id="set-smtp-user" value="${s.smtp_user || ""}" /></div>
+          <div class="field"><label>Contraseña SMTP ${s.smtp_pass_set ? "(ya configurada, dejá en blanco para no cambiarla)" : ""}</label><input id="set-smtp-pass" type="password" /></div>
+          <div class="field"><label>Email remitente</label><input id="set-smtp-from" value="${s.smtp_from || ""}" /></div>
+          <button class="btn btn-primary" id="save-settings-2">Guardar configuración de mail</button>
+        </div>`;
+    }
+    function wireParametros() {
+      async function saveBusinessData() {
+        try {
+          await apiWithOverride("/settings", { method: "PATCH", body: {
+            name: document.getElementById("set-name").value,
+            legalName: document.getElementById("set-legal-name").value,
+            taxId: document.getElementById("set-tax-id").value,
+            currency: document.getElementById("set-currency").value,
+            fiscalAddress: document.getElementById("set-fiscal-address").value,
+            phone: document.getElementById("set-phone").value,
+            invoicePrefix: document.getElementById("set-invoice-prefix").value,
+          }}, "settings:manage");
+          toast("Datos del negocio guardados.", "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      }
+      async function saveMailData() {
+        try {
+          await apiWithOverride("/settings", { method: "PATCH", body: {
+            smtpHost: document.getElementById("set-smtp-host").value || null,
+            smtpPort: Number(document.getElementById("set-smtp-port").value) || null,
+            smtpUser: document.getElementById("set-smtp-user").value || null,
+            smtpPass: document.getElementById("set-smtp-pass").value || undefined,
+            smtpFrom: document.getElementById("set-smtp-from").value || null,
+          }}, "settings:manage");
+          toast("Configuración de mail guardada.", "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      }
+      document.getElementById("save-settings-1").addEventListener("click", saveBusinessData);
+      document.getElementById("save-settings-2").addEventListener("click", saveMailData);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reportes
+    // ---------------------------------------------------------------------
+    function renderReportes() {
+      const today = new Date().toISOString().slice(0, 10);
+      const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      return `
+        <div class="card mb16">
+          <h3 style="margin-top:0">Cuenta de resultados</h3>
+          <p class="small muted">Descarga un Excel con ventas totales, costo de mercadería vendida (según las recetas cargadas en Inventario), ganancia bruta, ventas por producto y pagos por medio, para el rango de fechas elegido.</p>
+          <div class="grid grid-2">
+            <div class="field"><label>Desde</label><input type="date" id="rep-from" value="${monthAgo}" /></div>
+            <div class="field"><label>Hasta</label><input type="date" id="rep-to" value="${today}" /></div>
+          </div>
+          <button class="btn btn-primary" id="download-report">Descargar Excel</button>
+        </div>`;
+    }
+    function wireReportes() {
+      document.getElementById("download-report").addEventListener("click", async () => {
+        const from = document.getElementById("rep-from").value;
+        const to = document.getElementById("rep-to").value;
+        try {
+          const res = await fetch(`/api/reports/income-statement?from=${from}&to=${to}`, {
+            headers: { Authorization: `Bearer ${getToken()}` },
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            throw new Error((data && data.error) || "No se pudo generar el reporte.");
+          }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = "cuenta-de-resultados.xlsx";
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        } catch (err) { toast(err.message, "error"); }
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    // Auditoría
+    // ---------------------------------------------------------------------
+    function renderAuditoria() {
+      return `
+        <div class="card mb16">
+          <h3 style="margin-top:0">Registro de auditoría</h3>
+          <p class="small muted">Últimas ${auditLogs.length} acciones registradas (las más nuevas primero).</p>
+          <table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th></tr></thead>
+          <tbody>
+            ${auditLogs.map(l => `<tr>
+              <td class="small">${new Date(l.created_at).toLocaleString("es-AR")}</td>
+              <td class="small">${l.user_name || "-"}</td>
+              <td class="small">${l.action}</td>
+              <td class="small">${l.entity}${l.entity_id ? " · " + String(l.entity_id).slice(0, 8) : ""}</td>
+            </tr>`).join("") || `<tr><td colspan="4" class="muted small">Sin registros todavía.</td></tr>`}
+          </tbody></table>
+        </div>`;
+    }
+    function wireAuditoria() {}
 
     const TABS = {
       productos: { render: renderProductos, wire: wireProductos },
@@ -347,7 +770,12 @@
       adicionales: { render: renderAdicionales, wire: wireAdicionales },
       estaciones: { render: renderEstaciones, wire: wireEstaciones },
       salon: { render: renderSalon, wire: wireSalon },
+      inventario: { render: renderInventario, wire: wireInventario },
+      reportes: { render: renderReportes, wire: wireReportes },
       usuarios: { render: renderUsuarios, wire: wireUsuarios },
+      permisos: { render: renderPermisos, wire: wirePermisos },
+      parametros: { render: renderParametros, wire: wireParametros },
+      auditoria: { render: renderAuditoria, wire: wireAuditoria },
     };
     let activeTab = "productos";
 
@@ -363,7 +791,7 @@
 
     document.getElementById("tabs").addEventListener("click", (e) => {
       if (e.target.tagName !== "BUTTON") return;
-      if (e.target.dataset.tab === "usuarios" && !canManageUsers) return;
+      if (["usuarios", "permisos", "parametros", "auditoria"].includes(e.target.dataset.tab) && !canManageUsers) return;
       document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
       e.target.classList.add("active");
       activeTab = e.target.dataset.tab;

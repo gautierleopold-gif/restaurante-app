@@ -60,8 +60,6 @@
     let categories = [];
     let products = [];
     let activeCategoryId = null;
-    const canDiscount = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
-    const canCancelItem = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
     const canClose = ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"].includes(user.role);
 
     async function loadMenu() {
@@ -218,22 +216,27 @@
               ${it.notes ? `<div class="ti-mods">📝 ${it.notes}</div>` : ""}
               <div class="ti-mods">
                 ${it.canceled ? `Anulado: ${it.cancel_reason || ""}` : it.sent_at ? `<span class="pill pill-${it.kitchen_status.toLowerCase()}">${it.kitchen_status.replace("_", " ")}</span>` : "Sin enviar a cocina"}
-                ${!it.canceled && canCancelItem ? ` · <a href="#" data-cancel-item="${it.id}">anular</a>` : ""}
+                ${!it.canceled ? ` · <a href="#" data-cancel-item="${it.id}">anular</a>` : ""}
               </div>
             </div>`;
           })
           .join("");
 
+        // Anular un ítem requiere el permiso "orders:cancelItem". Si el
+        // usuario logueado no lo tiene (por ejemplo un Mozo), se le ofrece
+        // pedir la autorización de un Encargado/Dueño/Admin ahí mismo en vez
+        // de simplemente fallar.
         itemsEl.querySelectorAll("[data-cancel-item]").forEach((link) =>
           link.addEventListener("click", async (e) => {
             e.preventDefault();
             const reason = prompt("Motivo de la anulación:");
             if (!reason) return;
             try {
-              await api(`/orders/${order.id}/items/${link.dataset.cancelItem}/cancel`, {
-                method: "POST",
-                body: { reason },
-              });
+              await apiWithOverride(
+                `/orders/${order.id}/items/${link.dataset.cancelItem}/cancel`,
+                { method: "POST", body: { reason } },
+                "orders:cancelItem"
+              );
               await refreshOrder();
             } catch (err) {
               toast(err.message, "error");
@@ -257,16 +260,67 @@
       return { SALON: "Salón", RETIRO: "Retiro", DELIVERY: "Delivery" }[t] || t;
     }
 
+    const canInvoice = ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"].includes(user.role);
+
     function renderActions() {
       const el = document.getElementById("ticket-actions");
       if (order.status !== "ABIERTO") {
-        el.innerHTML = `<span class="pill pill-entregado">Pedido ${order.status.toLowerCase()}</span>`;
+        let html = `<span class="pill pill-entregado">Pedido ${order.status.toLowerCase()}</span>`;
+        if (order.status === "CERRADO" && canInvoice) {
+          if (!order.invoice) {
+            html += ` <button class="btn btn-sm btn-primary" id="issue-invoice-btn">Emitir factura</button>`;
+          } else {
+            html += ` <span class="small muted">Comprobante ${order.invoice.number}</span>
+              <a class="btn btn-sm" href="/api/orders/${order.id}/invoice/pdf" target="_blank" id="download-invoice-link">Descargar PDF</a>
+              <button class="btn btn-sm" id="email-invoice-btn">Enviar por mail</button>`;
+          }
+        }
+        html += ` <a class="btn btn-sm" href="/pages/salon.html" id="back-to-salon-link">Volver al salón</a>`;
+        el.innerHTML = html;
+        if (order.status === "CERRADO" && canInvoice && !order.invoice) {
+          el.querySelector("#issue-invoice-btn").addEventListener("click", openIssueInvoiceModal);
+        }
+        if (order.status === "CERRADO" && canInvoice && order.invoice) {
+          // El link de descarga necesita el token; como es un <a> normal, lo
+          // interceptamos para pedirlo con fetch y forzar la descarga con
+          // el header de autorización correspondiente.
+          el.querySelector("#download-invoice-link").addEventListener("click", async (e) => {
+            e.preventDefault();
+            try {
+              const res = await fetch(`/api/orders/${order.id}/invoice/pdf`, {
+                headers: { Authorization: `Bearer ${getToken()}` },
+              });
+              if (!res.ok) throw new Error("No se pudo descargar la factura.");
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `factura-${order.invoice.number}.pdf`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          });
+          el.querySelector("#email-invoice-btn").addEventListener("click", async () => {
+            const email = prompt("Enviar factura al email:", order.invoice.customer_email || order.customer_email || "");
+            if (!email) return;
+            try {
+              await api(`/orders/${order.id}/invoice/email`, { method: "POST", body: { email } });
+              toast("Factura enviada por mail.", "success");
+            } catch (err) {
+              toast(err.message, "error");
+            }
+          });
+        }
         return;
       }
       const pendingToSend = order.items.some((i) => !i.canceled && !i.sent_at);
       let html = "";
       if (pendingToSend) html += `<button class="btn btn-accent" id="send-kitchen-btn">Enviar a cocina</button>`;
-      if (canDiscount) html += `<button class="btn" id="discount-btn">Aplicar descuento</button>`;
+      html += `<button class="btn" id="discount-btn">Aplicar descuento</button>`;
       if (order.table_id) html += `<button class="btn" id="request-bill-btn">Pedir la cuenta</button>`;
       html += `<button class="btn btn-primary" id="pay-btn">Cobrar</button>`;
       html += `<button class="btn btn-danger" id="cancel-order-btn">Cancelar pedido</button>`;
@@ -283,30 +337,36 @@
           }
         });
 
-      if (canDiscount)
-        el.querySelector("#discount-btn").addEventListener("click", () => {
-          const overlay = showModal(`
-            <h2>Aplicar descuento</h2>
-            <div class="field"><label>Porcentaje (%)</label><input type="number" id="discount-percent" min="0" max="100" value="${order.discount_percent}" /></div>
-            <div class="field"><label>Motivo</label><input id="discount-reason" value="${order.discount_reason || ""}" /></div>
-            <button class="btn btn-primary" id="apply-discount">Aplicar</button>
-          `);
-          overlay.querySelector("#apply-discount").addEventListener("click", async () => {
-            try {
-              await api(`/orders/${order.id}/discount`, {
+      // Aplicar un descuento requiere el permiso "orders:discount". Si el
+      // usuario no lo tiene, se le ofrece pedir autorización de un
+      // supervisor en el momento (ver requestManagerOverride en api.js).
+      el.querySelector("#discount-btn").addEventListener("click", () => {
+        const overlay = showModal(`
+          <h2>Aplicar descuento</h2>
+          <div class="field"><label>Porcentaje (%)</label><input type="number" id="discount-percent" min="0" max="100" value="${order.discount_percent}" /></div>
+          <div class="field"><label>Motivo</label><input id="discount-reason" value="${order.discount_reason || ""}" /></div>
+          <button class="btn btn-primary" id="apply-discount">Aplicar</button>
+        `);
+        overlay.querySelector("#apply-discount").addEventListener("click", async () => {
+          try {
+            await apiWithOverride(
+              `/orders/${order.id}/discount`,
+              {
                 method: "POST",
                 body: {
                   percent: Number(overlay.querySelector("#discount-percent").value),
                   reason: overlay.querySelector("#discount-reason").value,
                 },
-              });
-              closeModal(overlay);
-              await refreshOrder();
-            } catch (err) {
-              toast(err.message, "error");
-            }
-          });
+              },
+              "orders:discount"
+            );
+            closeModal(overlay);
+            await refreshOrder();
+          } catch (err) {
+            toast(err.message, "error");
+          }
         });
+      });
 
       if (order.table_id)
         el.querySelector("#request-bill-btn").addEventListener("click", async () => {
@@ -316,13 +376,43 @@
 
       el.querySelector("#pay-btn").addEventListener("click", openPayModal);
 
+      // Cancelar el pedido completo requiere "orders:cancelItem" también
+      // (misma permiso elevada que anular un ítem).
       el.querySelector("#cancel-order-btn").addEventListener("click", async () => {
         const reason = prompt("Motivo de la cancelación del pedido:");
         if (!reason) return;
         try {
-          await api(`/orders/${order.id}/cancel`, { method: "POST", body: { reason } });
+          await apiWithOverride(`/orders/${order.id}/cancel`, { method: "POST", body: { reason } }, "orders:cancelItem");
           toast("Pedido cancelado.", "success");
           setTimeout(() => (location.href = "/pages/salon.html"), 700);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+
+    function openIssueInvoiceModal() {
+      const overlay = showModal(`
+        <h2>Emitir factura del pedido #${order.code}</h2>
+        <p class="small muted">Se genera con el próximo número correlativo configurado en Administración → Parámetros.</p>
+        <div class="field"><label>Nombre / razón social del cliente</label><input id="inv-name" value="${order.customer_name || ""}" /></div>
+        <div class="field"><label>NIT / identificación fiscal del cliente (opcional)</label><input id="inv-taxid" /></div>
+        <div class="field"><label>Email del cliente (opcional, para poder enviarla por mail)</label><input id="inv-email" type="email" value="${order.customer_phone && order.customer_phone.includes("@") ? "" : ""}" /></div>
+        <button class="btn btn-primary" id="confirm-issue-invoice">Emitir factura</button>
+      `);
+      overlay.querySelector("#confirm-issue-invoice").addEventListener("click", async () => {
+        try {
+          await api(`/orders/${order.id}/invoice`, {
+            method: "POST",
+            body: {
+              customerName: overlay.querySelector("#inv-name").value || undefined,
+              customerTaxId: overlay.querySelector("#inv-taxid").value || undefined,
+              customerEmail: overlay.querySelector("#inv-email").value || undefined,
+            },
+          });
+          closeModal(overlay);
+          await refreshOrder();
+          toast("Factura emitida.", "success");
         } catch (err) {
           toast(err.message, "error");
         }
@@ -347,7 +437,7 @@
         <p class="small muted">Podés registrar varios pagos (dividir la cuenta entre distintos medios o personas) hasta cubrir el total.</p>
         <div class="flex-gap">
           <button class="btn btn-primary" id="register-pay">Registrar pago</button>
-          ${canClose ? `<button class="btn btn-accent" id="close-order">Registrar y cerrar mesa</button>` : ""}
+          ${canClose ? `<button class="btn btn-accent" id="close-order">${order.table_id ? "Registrar y cerrar mesa" : "Registrar y cerrar pedido"}</button>` : ""}
         </div>
       `);
 
@@ -387,8 +477,12 @@
             if (!ok) return;
             await api(`/orders/${order.id}/close`, { method: "POST" });
             closeModal(overlay);
-            toast("Pedido cobrado y mesa liberada.", "success");
-            setTimeout(() => (location.href = "/pages/salon.html"), 800);
+            toast(order.table_id ? "Pedido cobrado y mesa liberada." : "Pedido cobrado y cerrado.", "success");
+            // No navegamos automáticamente: el pedido queda cerrado en esta
+            // misma pantalla para poder emitir la factura al toque si hace
+            // falta. Quien quiera volver al salón tiene un botón para eso en
+            // las acciones del pedido (ver renderActions).
+            await refreshOrder();
           } catch (err) {
             toast(err.message, "error");
           }
