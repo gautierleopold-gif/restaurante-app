@@ -33,8 +33,19 @@ async function seed() {
     const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
 
     const { rows: branchRows } = await client.query(
-      `INSERT INTO branches (name, address) VALUES ($1, $2) RETURNING id`,
-      ["Casa Matriz", "Av. Principal 123"]
+      `INSERT INTO branches (name, address, legal_name, tax_id, fiscal_address, phone, currency, invoice_prefix, next_invoice_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [
+        "Casa Matriz",
+        "Av. Principal 123",
+        "Restaurante Demo S.A.",
+        "900123456-7",
+        "Av. Principal 123",
+        "+54 11 5555-5555",
+        "ARS",
+        "A",
+        1,
+      ]
     );
     const branchId = branchRows[0].id;
 
@@ -74,14 +85,17 @@ async function seed() {
     );
     const terraceId = terraceRows[0].id;
 
+    // pos_x/pos_y son coordenadas libres en píxeles (no una grilla): se
+    // pueden reacomodar arrastrando las mesas con el mouse desde
+    // Administración → Salón y mesas.
     const tablesToCreate = [
-      [roomId, "Mesa 1", 4, 0, 0],
-      [roomId, "Mesa 2", 2, 1, 0],
-      [roomId, "Mesa 3", 6, 2, 0],
-      [roomId, "Mesa 4", 4, 0, 1],
-      [roomId, "Mesa 5", 4, 1, 1],
-      [terraceId, "Terraza 1", 4, 0, 0],
-      [terraceId, "Terraza 2", 4, 1, 0],
+      [roomId, "Mesa 1", 4, 20, 20],
+      [roomId, "Mesa 2", 2, 170, 20],
+      [roomId, "Mesa 3", 6, 320, 20],
+      [roomId, "Mesa 4", 4, 20, 150],
+      [roomId, "Mesa 5", 4, 170, 150],
+      [terraceId, "Terraza 1", 4, 20, 20],
+      [terraceId, "Terraza 2", 4, 170, 20],
     ];
     for (const [rid, name, capacity, x, y] of tablesToCreate) {
       await client.query(
@@ -224,12 +238,14 @@ async function seed() {
       },
     ];
 
+    const productIds = {};
     for (const p of products) {
       const { rows } = await client.query(
         `INSERT INTO products (name, category_id, station_id, base_price) VALUES ($1,$2,$3,$4) RETURNING id`,
         [p.name, categoryIds[p.category], stationIds[p.station], p.price]
       );
       const productId = rows[0].id;
+      productIds[p.name] = productId;
       for (const groupId of p.modifierGroups) {
         await client.query(
           `INSERT INTO product_modifier_groups (product_id, modifier_group_id) VALUES ($1,$2)`,
@@ -240,6 +256,38 @@ async function seed() {
         await client.query(
           `INSERT INTO product_variants (product_id, name, price) VALUES ($1,$2,$3)`,
           [productId, name, price]
+        );
+      }
+    }
+
+    // Inventario de ejemplo: algunos insumos con su costo y stock mínimo, y
+    // la receta de un par de productos para que se pueda ver el descuento
+    // automático de stock al vender ni bien se prueba la app.
+    const ingredients = [
+      ["Carne de res", "kg", 40, 8, 4200],
+      ["Pan para milanesa", "unidad", 60, 15, 250],
+      ["Muzzarella", "kg", 15, 3, 6800],
+      ["Masa de empanada", "unidad", 120, 24, 180],
+    ];
+    const ingredientIds = {};
+    for (const [name, unit, stock, minStock, cost] of ingredients) {
+      const { rows } = await client.query(
+        `INSERT INTO ingredients (name, unit, stock, min_stock, cost_per_unit, branch_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [name, unit, stock, minStock, cost, branchId]
+      );
+      ingredientIds[name] = rows[0].id;
+    }
+    const recipes = [
+      ["Bife de chorizo", [["Carne de res", 0.35]]],
+      ["Milanesa napolitana", [["Carne de res", 0.25], ["Pan para milanesa", 1], ["Muzzarella", 0.08]]],
+      ["Empanadas (x3)", [["Masa de empanada", 3]]],
+      ["Pizza muzzarella", [["Muzzarella", 0.2]]],
+    ];
+    for (const [productName, items] of recipes) {
+      for (const [ingredientName, qty] of items) {
+        await client.query(
+          `INSERT INTO product_ingredients (product_id, ingredient_id, quantity) VALUES ($1,$2,$3)`,
+          [productIds[productName], ingredientIds[ingredientName], qty]
         );
       }
     }
