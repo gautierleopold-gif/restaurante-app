@@ -5,7 +5,9 @@ const NAV_LINKS = [
   { href: "/pages/pos.html", label: "Nuevo pedido", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"] },
   { href: "/pages/pedidos.html", label: "Pedidos", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"] },
   { href: "/pages/cocina.html", label: "Cocina", roles: ["ADMIN", "DUENIO", "ENCARGADO", "COCINA", "MOZO"] },
+  { href: "/pages/caja.html", label: "Cierre de caja", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"] },
   { href: "/pages/admin.html", label: "Administración", roles: ["ADMIN", "DUENIO", "ENCARGADO"] },
+  { href: "/pages/ayuda.html", label: "Ayuda", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"] },
 ];
 
 const ROLE_LABELS = {
