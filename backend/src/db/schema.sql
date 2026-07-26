@@ -61,6 +61,19 @@ ALTER TABLE branches ADD COLUMN IF NOT EXISTS smtp_port INT;
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS smtp_user TEXT;
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS smtp_pass TEXT;
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS smtp_from TEXT;
+-- IVA / sales tax configurable: cada sucursal puede definir una alícuota y
+-- si se aplica de forma "aditiva" (se suma al precio, como un sales tax) o
+-- "inclusiva" (ya viene incluida en los precios cargados, solo se discrimina
+-- en la factura) o directamente no aplicarla ('NONE'), para poder adaptarse
+-- a la legislación de cada país sin tocar código.
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,2) NOT NULL DEFAULT 0;
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS tax_mode TEXT NOT NULL DEFAULT 'NONE';
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS tax_label TEXT NOT NULL DEFAULT 'IVA';
+-- Envío de mail alternativo por API HTTP (Resend), para hostings gratuitos
+-- (como el free tier de Render) que desde fines de 2025 bloquean el tráfico
+-- saliente a los puertos de SMTP (25/465/587): si hay una API key configurada
+-- acá, se usa esto en vez de SMTP para enviar las facturas por mail.
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS resend_api_key TEXT;
 
 -- Usuarios ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
@@ -130,6 +143,12 @@ CREATE TABLE IF NOT EXISTS modifier_groups (
   required BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+-- Grupo "de reparto" (ej. sabores de empanadas): en vez de elegir una o
+-- varias opciones sueltas, la cantidad total del ítem se reparte entre las
+-- opciones del grupo (4 J&Q + 2 carne + 6 verdura y queso = 12). Se aplica a
+-- cualquier producto que tenga asociado un grupo con split_mode = true.
+ALTER TABLE modifier_groups ADD COLUMN IF NOT EXISTS split_mode BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE TABLE IF NOT EXISTS modifiers (
   id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id UUID NOT NULL REFERENCES modifier_groups(id) ON DELETE CASCADE,
@@ -184,6 +203,8 @@ CREATE TABLE IF NOT EXISTS orders (
   closed_at        TIMESTAMPTZ
 );
 
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS order_items (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id       UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -211,6 +232,11 @@ CREATE TABLE IF NOT EXISTS order_item_modifiers (
   modifier_id   UUID NOT NULL REFERENCES modifiers(id),
   price         NUMERIC(10,2) NOT NULL
 );
+
+-- Para modificadores de un grupo "split_mode": cuántas unidades de la
+-- cantidad total del ítem corresponden a esa opción (ver modifier_groups
+-- arriba). Para modificadores normales (no split) queda en 1 y no se usa.
+ALTER TABLE order_item_modifiers ADD COLUMN IF NOT EXISTS quantity INT NOT NULL DEFAULT 1;
 
 -- Pagos -----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS payments (
@@ -273,7 +299,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_ingredient ON stock_movements(ing
 -- Facturación -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS invoices (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id         UUID NOT NULL REFERENCES orders(id),
+  order_id         UUID REFERENCES orders(id),
   branch_id        UUID REFERENCES branches(id),
   number           TEXT NOT NULL,
   customer_name    TEXT,
@@ -286,3 +312,60 @@ CREATE TABLE IF NOT EXISTS invoices (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_invoices_order ON invoices(order_id);
+
+-- Plantillas de factura: "editor básico" para poder cambiar el logo, textos
+-- de encabezado/pie y un preset de estilo, sin tocar código. Puede haber
+-- varias por sucursal (varios "modelos de ejemplares"); una se marca como
+-- predeterminada (is_default) y es la que se usa al emitir si no se elige
+-- otra explícitamente.
+CREATE TABLE IF NOT EXISTS invoice_templates (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id    UUID REFERENCES branches(id),
+  name         TEXT NOT NULL,
+  logo_base64  TEXT,
+  header_text  TEXT,
+  footer_text  TEXT,
+  accent_color TEXT NOT NULL DEFAULT '#2F5233',
+  layout       TEXT NOT NULL DEFAULT 'CLASICO',
+  is_default   BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_templates_branch ON invoice_templates(branch_id);
+
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES invoice_templates(id) ON DELETE SET NULL;
+
+-- Snapshot del IVA/tax aplicado al momento de emitir la factura (no
+-- recalcular con la configuración actual de la sucursal, que puede cambiar
+-- después). tax_mode: NONE | INCLUSIVE | ADDITIVE.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,2) NOT NULL DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_mode TEXT NOT NULL DEFAULT 'NONE';
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_label TEXT NOT NULL DEFAULT 'IVA';
+
+-- Cierre de caja: resumen simple del período transcurrido desde el cierre
+-- anterior (o desde el principio, si es el primero) hasta el momento en que
+-- se cierra: cantidad de pedidos, ventas totales y desglose por medio de
+-- pago. No modifica ni bloquea nada operativo; es solo un registro/checkpoint
+-- para el resumen del día.
+CREATE TABLE IF NOT EXISTS cash_closures (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id        UUID REFERENCES branches(id),
+  closed_by_id     UUID REFERENCES users(id),
+  period_from      TIMESTAMPTZ NOT NULL,
+  period_to        TIMESTAMPTZ NOT NULL,
+  order_count      INT NOT NULL DEFAULT 0,
+  total_sales      NUMERIC(10,2) NOT NULL DEFAULT 0,
+  totals_by_method JSONB NOT NULL DEFAULT '{}',
+  notes            TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cash_closures_branch ON cash_closures(branch_id, period_to);
+-- Factura libre (no ligada a un pedido): ítems cargados manualmente.
+ALTER TABLE invoices ALTER COLUMN order_id DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  invoice_id  UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  quantity    NUMERIC(10,2) NOT NULL DEFAULT 1,
+  unit_price  NUMERIC(10,2) NOT NULL DEFAULT 0
+);
