@@ -15,6 +15,9 @@ const inventoryRoutes = require("./routes/inventory");
 const settingsRoutes = require("./routes/settings");
 const reportRoutes = require("./routes/reports");
 const auditRoutes = require("./routes/audit");
+const cashClosureRoutes = require("./routes/cashClosures");
+const invoiceTemplateRoutes = require("./routes/invoiceTemplates");
+const freeInvoiceRoutes = require("./routes/freeInvoices");
 const { pool } = require("./db/pool");
 const { loadOverrides } = require("./lib/permissions");
 
@@ -45,6 +48,9 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/cash-closures", cashClosureRoutes);
+app.use("/api/invoice-templates", invoiceTemplateRoutes);
+app.use("/api/free-invoices", freeInvoiceRoutes);
 
 io.on("connection", (socket) => {
   socket.on("disconnect", () => {});
