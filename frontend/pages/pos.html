@@ -5,6 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Punto de venta - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    /* Ticket imprimible: oculto en pantalla, se muestra solo al imprimir
+       (window.print()), formateado a ancho de impresora de tickets
+       (58/80mm). Todo lo demás de la página se oculta durante la impresión. */
+    #print-ticket { display: none; }
+    @media print {
+      body > *:not(#print-ticket) { display: none !important; }
+      #print-ticket {
+        display: block !important;
+        width: 78mm;
+        margin: 0;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        color: #000;
+      }
+      #print-ticket .pt-center { text-align: center; }
+      #print-ticket .pt-line { border-top: 1px dashed #000; margin: 6px 0; }
+      #print-ticket .pt-row { display: flex; justify-content: space-between; gap: 8px; }
+      #print-ticket .pt-title { font-weight: bold; font-size: 14px; }
+      @page { margin: 4mm; }
+    }
+  </style>
 </head>
 <body>
   <div id="app-nav"></div>
@@ -47,6 +69,8 @@
     </div>
   </div>
 
+  <div id="print-ticket"></div>
+
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/ui.js"></script>
@@ -60,7 +84,89 @@
     let categories = [];
     let products = [];
     let activeCategoryId = null;
+    let branch = null;
+    (async () => {
+      try {
+        const data = await api("/settings/public");
+        branch = data.branch;
+      } catch (err) {
+        branch = null;
+      }
+    })();
     const canClose = ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"].includes(user.role);
+
+    // Ticket imprimible / descargable: cualquier rol (mozo incluido) puede
+    // imprimir vía el navegador (window.print(), formateado con la hoja de
+    // estilos @media print de arriba) o descargar un .txt equivalente para
+    // cuando todavía no hay una impresora de tickets conectada.
+    function ticketLines() {
+      const lines = [];
+      lines.push((branch && (branch.legalName || branch.name)) || "Restaurante");
+      if (branch && branch.address) lines.push(branch.address);
+      if (branch && branch.taxId) lines.push(`CUIT/NIT: ${branch.taxId}`);
+      lines.push("--------------------------------");
+      lines.push(`Pedido #${order.code} · ${orderTypeLabel(order.type)}`);
+      lines.push(new Date(order.created_at).toLocaleString("es-AR"));
+      if (order.table_name) lines.push(`Mesa: ${(order.room_name || "") + " " + order.table_name}`.trim());
+      if (order.customer_name) lines.push(`Cliente: ${order.customer_name}`);
+      if (order.customer_address) lines.push(`Dirección: ${order.customer_address}`);
+      lines.push("--------------------------------");
+      order.items
+        .filter((it) => !it.canceled)
+        .forEach((it) => {
+          const lineTotal = it.quantity * (Number(it.unit_price) + it.modifiers.reduce((s, m) => s + Number(m.price), 0));
+          lines.push(`${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}  $${money(lineTotal)}`);
+          it.modifiers.forEach((m) =>
+            lines.push(`   + ${Number(m.quantity) > 1 ? `${m.quantity}x ` : ""}${m.modifier_name}`)
+          );
+          if (it.notes) lines.push(`   * ${it.notes}`);
+        });
+      lines.push("--------------------------------");
+      lines.push(`Subtotal: $${money(order.subtotal)}`);
+      if (Number(order.discount_percent) > 0) {
+        const discountAmount = (Number(order.subtotal) * Number(order.discount_percent)) / 100;
+        lines.push(`Descuento (${order.discount_percent}%): -$${money(discountAmount)}`);
+      }
+      if (Number(order.tax_amount) > 0) {
+        const modeSuffix = branch && branch.taxMode === "INCLUSIVE" ? " (incluido)" : "";
+        lines.push(`${(branch && branch.taxLabel) || "IVA"}${modeSuffix}: $${money(order.tax_amount)}`);
+      }
+      lines.push(`TOTAL: $${money(order.total)}`);
+      if (order.payments && order.payments.length > 0) {
+        lines.push("--------------------------------");
+        order.payments.forEach((p) => lines.push(`Pago (${p.method}): $${money(p.amount)}`));
+      }
+      lines.push("--------------------------------");
+      lines.push("¡Gracias por su visita!");
+      return lines;
+    }
+
+    function renderPrintTicket() {
+      const el = document.getElementById("print-ticket");
+      if (!order) { el.innerHTML = ""; return; }
+      el.innerHTML = ticketLines()
+        .map((l) => (l.startsWith("--") ? `<div class="pt-line"></div>` : `<div>${l}</div>`))
+        .join("");
+      el.querySelector("div")?.classList.add("pt-center", "pt-title");
+    }
+
+    function printTicket() {
+      renderPrintTicket();
+      setTimeout(() => window.print(), 50);
+    }
+
+    function downloadTicketTxt() {
+      const text = ticketLines().join("\n");
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ticket-${order.code}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
 
     async function loadMenu() {
       const [catData, prodData] = await Promise.all([api("/menu/categories"), api("/menu/products")]);
@@ -109,7 +215,12 @@
     function openAddItemModal(productId) {
       const product = products.find((p) => p.id === productId);
       const hasVariants = product.variants && product.variants.length > 0;
-      const groups = product.modifierGroups || [];
+      const allGroups = product.modifierGroups || [];
+      const groups = allGroups.filter((g) => !g.split_mode);
+      // Grupos "de reparto" (ej. sabores): en vez de tildar opciones, se
+      // reparte la cantidad total del ítem entre ellas (4 J&Q + 2 carne + 6
+      // verdura y queso = 12), aplicable a cualquier producto que los tenga.
+      const splitGroups = allGroups.filter((g) => g.split_mode);
 
       const variantHtml = hasVariants
         ? `<div class="field"><label>Variante</label><select id="variant-select">
@@ -135,11 +246,31 @@
         )
         .join("");
 
+      const splitGroupsHtml = splitGroups
+        .map(
+          (g) => `
+        <div class="field split-group" data-split-group="${g.id}">
+          <label>${g.name} — repartí la cantidad total entre las opciones</label>
+          ${g.modifiers
+            .map(
+              (m) => `
+            <div class="flex-gap" style="align-items:center">
+              <span class="small" style="flex:1">${m.name}</span>
+              <input type="number" class="split-qty" data-modifier="${m.id}" data-group="${g.id}" value="0" min="0" style="width:70px" />
+            </div>`
+            )
+            .join("")}
+          <p class="small muted" data-split-total="${g.id}">Repartido: 0 / <span class="qty-echo">1</span></p>
+        </div>`
+        )
+        .join("");
+
       const overlay = showModal(`
         <h2>${product.name}</h2>
         ${variantHtml}
         ${groupsHtml}
         <div class="field"><label>Cantidad</label><input type="number" id="qty-input" value="1" min="1" /></div>
+        ${splitGroupsHtml}
         <div class="field"><label>Observaciones</label><textarea id="notes-input" rows="2" placeholder="Ej: sin sal, para llevar aparte..."></textarea></div>
         <div class="flex-gap mt16">
           <button class="btn btn-primary" id="confirm-add">Agregar a la comanda</button>
@@ -156,10 +287,25 @@
         });
       });
 
+      function updateSplitTotals() {
+        const qty = Number(overlay.querySelector("#qty-input").value) || 1;
+        splitGroups.forEach((g) => {
+          const inputs = overlay.querySelectorAll(`.split-qty[data-group="${g.id}"]`);
+          const sum = Array.from(inputs).reduce((s, i) => s + (Number(i.value) || 0), 0);
+          const label = overlay.querySelector(`[data-split-total="${g.id}"]`);
+          label.querySelector(".qty-echo").textContent = qty;
+          label.firstChild.textContent = `Repartido: ${sum} / `;
+          label.style.color = sum === qty ? "" : "#c0392b";
+        });
+      }
+      overlay.querySelectorAll(".split-qty").forEach((inp) => inp.addEventListener("input", updateSplitTotals));
+      overlay.querySelector("#qty-input").addEventListener("input", updateSplitTotals);
+      updateSplitTotals();
+
       overlay.querySelector("#cancel-add").addEventListener("click", () => closeModal(overlay));
       overlay.querySelector("#confirm-add").addEventListener("click", async () => {
         const variantId = hasVariants ? overlay.querySelector("#variant-select").value : null;
-        const modifierIds = Array.from(overlay.querySelectorAll("input:checked")).map((i) => i.value);
+        const modifierIds = Array.from(overlay.querySelectorAll('input[type="radio"]:checked, input[type="checkbox"]:checked')).map((i) => i.value);
         const quantity = Number(overlay.querySelector("#qty-input").value) || 1;
         const notes = overlay.querySelector("#notes-input").value.trim();
 
@@ -174,10 +320,31 @@
           }
         }
 
+        // Validar y armar el reparto de sabores (si el producto tiene algún
+        // grupo split_mode): la suma tiene que dar exactamente la cantidad.
+        const flavorSplit = [];
+        for (const g of splitGroups) {
+          const inputs = overlay.querySelectorAll(`.split-qty[data-group="${g.id}"]`);
+          const entries = Array.from(inputs)
+            .map((i) => ({ modifierId: i.dataset.modifier, quantity: Number(i.value) || 0 }))
+            .filter((e) => e.quantity > 0);
+          const sum = entries.reduce((s, e) => s + e.quantity, 0);
+          const anyEntered = sum > 0;
+          if (anyEntered && sum !== quantity) {
+            toast(`El reparto de "${g.name}" debe sumar ${quantity} (suma actual: ${sum}).`, "error");
+            return;
+          }
+          if (g.required && !anyEntered) {
+            toast(`Repartí la cantidad entre las opciones de "${g.name}".`, "error");
+            return;
+          }
+          flavorSplit.push(...entries);
+        }
+
         try {
           await api(`/orders/${order.id}/items`, {
             method: "POST",
-            body: { productId, variantId, quantity, notes: notes || undefined, modifierIds },
+            body: { productId, variantId, quantity, notes: notes || undefined, modifierIds, flavorSplit },
           });
           closeModal(overlay);
           await refreshOrder();
@@ -204,7 +371,9 @@
       } else {
         itemsEl.innerHTML = order.items
           .map((it) => {
-            const modsTxt = it.modifiers.map((m) => m.modifier_name).join(", ");
+            const modsTxt = it.modifiers
+              .map((m) => (Number(m.quantity) > 1 ? `${m.quantity}x ${m.modifier_name}` : m.modifier_name))
+              .join(", ");
             const lineTotal = it.quantity * (Number(it.unit_price) + it.modifiers.reduce((s, m) => s + Number(m.price), 0));
             return `
             <div class="ticket-item" style="${it.canceled ? "opacity:.45;text-decoration:line-through" : ""}">
@@ -246,9 +415,12 @@
       }
 
       const totalsEl = document.getElementById("ticket-totals");
+      const discountAmount = (Number(order.subtotal) * Number(order.discount_percent)) / 100;
+      const taxAmount = Number(order.tax_amount || 0);
       totalsEl.innerHTML = `
         <div class="ticket-total-row"><span>Subtotal</span><span>$${money(order.subtotal)}</span></div>
-        ${Number(order.discount_percent) > 0 ? `<div class="ticket-total-row"><span>Descuento (${order.discount_percent}%)</span><span>-$${money(order.subtotal - order.total)}</span></div>` : ""}
+        ${Number(order.discount_percent) > 0 ? `<div class="ticket-total-row"><span>Descuento (${order.discount_percent}%)</span><span>-$${money(discountAmount)}</span></div>` : ""}
+        ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch?.taxLabel || "IVA"}${branch?.taxMode === "INCLUSIVE" ? " (incluido)" : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
         <div class="ticket-total-row grand"><span>Total</span><span>$${money(order.total)}</span></div>
         ${order.payments.length > 0 ? `<div class="ticket-total-row small muted"><span>Pagado</span><span>$${money(order.totalPaid)}</span></div>` : ""}
       `;
@@ -275,8 +447,12 @@
               <button class="btn btn-sm" id="email-invoice-btn">Enviar por mail</button>`;
           }
         }
+        html += ` <button class="btn btn-sm" id="print-ticket-btn">🖨️ Imprimir ticket</button>`;
+        html += ` <button class="btn btn-sm" id="download-ticket-btn">Descargar ticket (.txt)</button>`;
         html += ` <a class="btn btn-sm" href="/pages/salon.html" id="back-to-salon-link">Volver al salón</a>`;
         el.innerHTML = html;
+        el.querySelector("#print-ticket-btn").addEventListener("click", printTicket);
+        el.querySelector("#download-ticket-btn").addEventListener("click", downloadTicketTxt);
         if (order.status === "CERRADO" && canInvoice && !order.invoice) {
           el.querySelector("#issue-invoice-btn").addEventListener("click", openIssueInvoiceModal);
         }
@@ -324,7 +500,11 @@
       if (order.table_id) html += `<button class="btn" id="request-bill-btn">Pedir la cuenta</button>`;
       html += `<button class="btn btn-primary" id="pay-btn">Cobrar</button>`;
       html += `<button class="btn btn-danger" id="cancel-order-btn">Cancelar pedido</button>`;
+      html += `<button class="btn btn-sm" id="print-ticket-btn">🖨️ Imprimir ticket</button>`;
+      html += `<button class="btn btn-sm" id="download-ticket-btn">Descargar ticket (.txt)</button>`;
       el.innerHTML = html;
+      el.querySelector("#print-ticket-btn").addEventListener("click", printTicket);
+      el.querySelector("#download-ticket-btn").addEventListener("click", downloadTicketTxt);
 
       if (pendingToSend)
         el.querySelector("#send-kitchen-btn").addEventListener("click", async () => {
@@ -475,7 +655,13 @@
           try {
             const ok = await registerPayment();
             if (!ok) return;
-            await api(`/orders/${order.id}/close`, { method: "POST" });
+            await refreshOrder();
+            // El pago recién registrado puede haber cerrado el pedido
+            // automáticamente (y liberado la mesa) si cubrió el total; en ese
+            // caso no hace falta llamar a /close aparte.
+            if (order.status === "ABIERTO") {
+              await api(`/orders/${order.id}/close`, { method: "POST" });
+            }
             closeModal(overlay);
             toast(order.table_id ? "Pedido cobrado y mesa liberada." : "Pedido cobrado y cerrado.", "success");
             // No navegamos automáticamente: el pedido queda cerrado en esta
@@ -542,7 +728,12 @@
       try {
         const data = await api("/orders", {
           method: "POST",
-          body: { type, customerName, customerPhone, customerAddress },
+          body: {
+            type,
+            customerName,
+            customerPhone,
+            customerAddress: type === "DELIVERY" ? customerAddress : "",
+          },
         });
         order = data.order;
         document.getElementById("setup-container").style.display = "none";

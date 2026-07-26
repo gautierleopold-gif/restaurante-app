@@ -11,7 +11,10 @@
   <div class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0">Pedidos</h2>
-      <a href="/pages/pos.html?new=1" class="btn btn-primary">+ Retiro / Delivery</a>
+      <div class="flex-gap">
+        <a href="/pages/factura-libre.html" class="btn">+ Nueva factura libre</a>
+        <a href="/pages/pos.html?new=1" class="btn btn-primary">+ Retiro / Delivery</a>
+      </div>
     </div>
     <div class="tabs" id="status-tabs">
       <button data-status="ABIERTO" class="active">Abiertos</button>
@@ -21,7 +24,7 @@
     <div class="card">
       <table>
         <thead>
-          <tr><th>#</th><th>Tipo</th><th>Mesa / Cliente</th><th>Mozo</th><th>Total</th><th>Estado</th><th></th></tr>
+          <tr><th>#</th><th>Tipo</th><th>Mesa / Cliente</th><th>Mozo</th><th>Total</th><th>Estado</th><th>Factura</th><th></th></tr>
         </thead>
         <tbody id="orders-body"></tbody>
       </table>
@@ -35,6 +38,11 @@
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"]);
     if (user) renderNav();
     let currentStatus = "ABIERTO";
+    const canInvoice = user && ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"].includes(user.role);
+    if (user && !canInvoice) {
+      const freeInvoiceLink = document.querySelector('a[href="/pages/factura-libre.html"]');
+      if (freeInvoiceLink) freeInvoiceLink.style.display = "none";
+    }
 
     function typeLabel(t) { return { SALON: "Salón", RETIRO: "Retiro", DELIVERY: "Delivery" }[t] || t; }
 
@@ -42,7 +50,7 @@
       const data = await api(`/orders?status=${currentStatus}`);
       const body = document.getElementById("orders-body");
       if (data.orders.length === 0) {
-        body.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">No hay pedidos en este estado.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">No hay pedidos en este estado.</td></tr>`;
         return;
       }
       body.innerHTML = data.orders
@@ -55,10 +63,83 @@
           <td>${o.waiter_name || "-"}</td>
           <td>$${money(o.total)}</td>
           <td><span class="pill pill-${o.status === "ABIERTO" ? "ocupada" : o.status === "CERRADO" ? "libre" : "pendiente_pago"}">${o.status}</span></td>
+          <td>${invoiceCell(o)}</td>
           <td><a class="btn btn-sm" href="/pages/pos.html?orderId=${o.id}">Ver</a></td>
         </tr>`
         )
         .join("");
+      wireInvoiceButtons();
+    }
+
+    // Muestra directamente en la lista, sin tener que entrar al detalle del
+    // pedido, la acción de facturación disponible según su estado: emitir
+    // factura si está cerrado y no tiene una todavía, o descargarla/enviarla
+    // por mail si ya se emitió (esto vale para cualquier tipo de pedido,
+    // incluyendo Retiro y Delivery).
+    function invoiceCell(o) {
+      if (o.status !== "CERRADO" || !canInvoice) return `<span class="small muted">-</span>`;
+      if (!o.invoice_id) {
+        return `<button class="btn btn-sm btn-primary" data-issue-invoice="${o.id}" data-code="${o.code}" data-customer="${(o.customer_name || "").replace(/"/g, "&quot;")}">Facturar</button>`;
+      }
+      return `<span class="flex-gap">
+        <span class="small muted">${o.invoice_number}</span>
+        <button class="btn btn-sm" data-download-invoice="${o.id}" data-number="${o.invoice_number}">PDF</button>
+      </span>`;
+    }
+
+    function wireInvoiceButtons() {
+      document.querySelectorAll("[data-issue-invoice]").forEach((btn) =>
+        btn.addEventListener("click", () => openIssueInvoiceModal(btn.dataset.issueInvoice, btn.dataset.code, btn.dataset.customer))
+      );
+      document.querySelectorAll("[data-download-invoice]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          try {
+            const res = await fetch(`/api/orders/${btn.dataset.downloadInvoice}/invoice/pdf`, {
+              headers: { Authorization: `Bearer ${getToken()}` },
+            });
+            if (!res.ok) throw new Error("No se pudo descargar la factura.");
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `factura-${btn.dataset.number}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        })
+      );
+    }
+
+    function openIssueInvoiceModal(orderId, code, customerName) {
+      const overlay = showModal(`
+        <h2>Emitir factura del pedido #${code}</h2>
+        <p class="small muted">Se genera con el próximo número correlativo configurado en Administración → Parámetros.</p>
+        <div class="field"><label>Nombre / razón social del cliente</label><input id="inv-name" value="${customerName || ""}" /></div>
+        <div class="field"><label>NIT / identificación fiscal del cliente (opcional)</label><input id="inv-taxid" /></div>
+        <div class="field"><label>Email del cliente (opcional, para poder enviarla por mail)</label><input id="inv-email" type="email" /></div>
+        <button class="btn btn-primary" id="confirm-issue-invoice">Emitir factura</button>
+      `);
+      overlay.querySelector("#confirm-issue-invoice").addEventListener("click", async () => {
+        try {
+          await api(`/orders/${orderId}/invoice`, {
+            method: "POST",
+            body: {
+              customerName: overlay.querySelector("#inv-name").value || undefined,
+              customerTaxId: overlay.querySelector("#inv-taxid").value || undefined,
+              customerEmail: overlay.querySelector("#inv-email").value || undefined,
+            },
+          });
+          closeModal(overlay);
+          toast("Factura emitida.", "success");
+          load();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
     }
 
     document.getElementById("status-tabs").addEventListener("click", (e) => {

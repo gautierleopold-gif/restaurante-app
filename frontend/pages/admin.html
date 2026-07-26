@@ -21,6 +21,7 @@
       <button data-tab="usuarios" id="tab-usuarios" style="display:none">Usuarios</button>
       <button data-tab="permisos" id="tab-permisos" style="display:none">Permisos</button>
       <button data-tab="parametros" id="tab-parametros" style="display:none">Parámetros</button>
+      <button data-tab="plantillas" id="tab-plantillas" style="display:none">Plantillas de factura</button>
       <button data-tab="auditoria" id="tab-auditoria" style="display:none">Auditoría</button>
     </div>
     <div id="tab-content"></div>
@@ -41,11 +42,12 @@
       document.getElementById("tab-usuarios").style.display = "inline-block";
       document.getElementById("tab-permisos").style.display = "inline-block";
       document.getElementById("tab-parametros").style.display = "inline-block";
+      document.getElementById("tab-plantillas").style.display = "inline-block";
       document.getElementById("tab-auditoria").style.display = "inline-block";
     }
 
     let categories = [], stations = [], modifierGroups = [], products = [], rooms = [], users = [];
-    let ingredients = [], permissionGroups = [], settings = null, auditLogs = [];
+    let ingredients = [], permissionGroups = [], settings = null, auditLogs = [], invoiceTemplates = [];
 
     async function loadAll() {
       const [c, s, mg, p, r] = await Promise.all([
@@ -78,6 +80,10 @@
           const a = await api("/audit?limit=150");
           auditLogs = a.logs;
         } catch (err) { auditLogs = []; }
+        try {
+          const t = await api("/invoice-templates");
+          invoiceTemplates = t.templates;
+        } catch (err) { invoiceTemplates = []; }
       }
     }
 
@@ -164,7 +170,7 @@
           <p class="small muted">Ej: "Punto de la carne" (obligatorio, elegir 1) o "Adicionales" (opcional, elegir varios).</p>
           ${modifierGroups.map(g => `
             <div class="card mb8" style="background:var(--surface-alt)">
-              <strong>${g.name}</strong> <span class="small muted">(min ${g.min} / max ${g.max}${g.required ? " · obligatorio" : ""})</span>
+              <strong>${g.name}</strong> <span class="small muted">(min ${g.min} / max ${g.max}${g.required ? " · obligatorio" : ""}${g.split_mode ? " · reparto de cantidades" : ""})</span>
               <ul class="small">${g.modifiers.map(m => `<li>${m.name} ${Number(m.price) > 0 ? "+$" + money(m.price) : ""}</li>`).join("")}</ul>
               <button class="btn btn-sm" data-add-modifier="${g.id}">+ agregar opción</button>
             </div>`).join("")}
@@ -179,6 +185,7 @@
             <div class="field"><label>Máximo</label><input id="mg-max" type="number" value="1" /></div>
           </div>
           <div class="field"><label><input type="checkbox" id="mg-required" style="width:auto" /> Obligatorio</label></div>
+          <div class="field"><label><input type="checkbox" id="mg-split" style="width:auto" /> Grupo de reparto de cantidades (ej: sabores de empanadas: la cantidad total del ítem se reparte entre estas opciones, en vez de tildarlas)</label></div>
           <div class="field"><label>Opciones (una por línea, formato: Nombre,precio)</label><textarea id="mg-options" rows="3" placeholder="Extra queso,500\nSin cebolla,0"></textarea></div>
           <button class="btn btn-primary" id="save-mg">Guardar</button>`);
         overlay.querySelector("#save-mg").addEventListener("click", async () => {
@@ -187,6 +194,7 @@
           try {
             await apiWithOverride("/menu/modifier-groups", { method: "POST", body: {
               name: overlay.querySelector("#mg-name").value,
+              splitMode: overlay.querySelector("#mg-split").checked,
               min: Number(overlay.querySelector("#mg-min").value),
               max: Number(overlay.querySelector("#mg-max").value),
               required: overlay.querySelector("#mg-required").checked,
@@ -225,6 +233,7 @@
               <td>${p.name}</td><td>${p.category_name}</td><td>${p.station_name || "-"}</td><td>$${money(p.base_price)}</td>
               <td><span class="pill pill-${p.active ? "libre" : "pendiente_pago"}">${p.active ? "Activo" : "Inactivo"}</span></td>
               <td class="flex-gap">
+                <button class="btn btn-sm" data-edit-product="${p.id}">Editar</button>
                 <button class="btn btn-sm" data-toggle-product="${p.id}" data-active="${p.active}">${p.active ? "Desactivar" : "Activar"}</button>
                 <button class="btn btn-sm" data-edit-recipe="${p.id}" data-name="${p.name}">Receta</button>
               </td>
@@ -272,6 +281,41 @@
         } catch (err) { toast(err.message, "error"); }
       }));
       document.querySelectorAll("[data-edit-recipe]").forEach(btn => btn.addEventListener("click", () => openRecipeEditor(btn.dataset.editRecipe, btn.dataset.name)));
+      document.querySelectorAll("[data-edit-product]").forEach(btn => btn.addEventListener("click", () => openEditProduct(btn.dataset.editProduct)));
+    }
+
+    // Edita un producto existente (nombre/descripción/categoría/estación/
+    // precio/imagen/compuesto) sin tener que borrarlo y volver a crearlo.
+    function openEditProduct(productId) {
+      const p = products.find(pr => pr.id === productId);
+      if (!p) return;
+      const overlay = showModal(`<h2>Editar producto</h2>
+        <div class="field"><label>Nombre</label><input id="ep-name" value="${(p.name || "").replace(/"/g, "&quot;")}" /></div>
+        <div class="field"><label>Descripción</label><input id="ep-desc" value="${(p.description || "").replace(/"/g, "&quot;")}" /></div>
+        <div class="grid grid-2">
+          <div class="field"><label>Categoría</label><select id="ep-cat">${categories.map(c => `<option value="${c.id}" ${c.id === p.category_id ? "selected" : ""}>${c.name}</option>`).join("")}</select></div>
+          <div class="field"><label>Estación</label><select id="ep-station"><option value="">(ninguna)</option>${stations.map(s => `<option value="${s.id}" ${s.id === p.station_id ? "selected" : ""}>${s.name}</option>`).join("")}</select></div>
+        </div>
+        <div class="field"><label>Precio base</label><input id="ep-price" type="number" step="0.01" value="${p.base_price}" /></div>
+        <div class="field"><label>URL de imagen (opcional)</label><input id="ep-image" value="${p.image_url || ""}" /></div>
+        <div class="field"><label><input type="checkbox" id="ep-composite" style="width:auto" ${p.is_composite ? "checked" : ""} /> Producto compuesto (ver Grupos de opciones)</label></div>
+        <button class="btn btn-primary" id="save-edit-product">Guardar cambios</button>`);
+      overlay.querySelector("#save-edit-product").addEventListener("click", async () => {
+        try {
+          await apiWithOverride(`/menu/products/${productId}`, { method: "PATCH", body: {
+            name: overlay.querySelector("#ep-name").value,
+            description: overlay.querySelector("#ep-desc").value || null,
+            categoryId: overlay.querySelector("#ep-cat").value,
+            stationId: overlay.querySelector("#ep-station").value || null,
+            basePrice: Number(overlay.querySelector("#ep-price").value),
+            imageUrl: overlay.querySelector("#ep-image").value || null,
+            isComposite: overlay.querySelector("#ep-composite").checked,
+          }}, "menu:manage");
+          closeModal(overlay);
+          await refresh();
+          toast("Producto actualizado.", "success");
+        } catch (err) { toast(err.message, "error"); }
+      });
     }
 
     // Receta de un producto: qué insumos del inventario consume y en qué
@@ -659,16 +703,40 @@
           <button class="btn btn-primary" id="save-settings-1">Guardar datos del negocio</button>
         </div>
         <div class="card mb16">
-          <h3 style="margin-top:0">Envío de facturas por mail (SMTP)</h3>
-          <p class="small muted">Opcional. Completá estos datos si querés poder mandar la factura por mail directamente desde un pedido, además de descargarla en PDF. Si no lo configurás, siempre podés descargar el PDF igual.</p>
+          <h3 style="margin-top:0">IVA / Sales tax</h3>
+          <p class="small muted">La legislación de cada país es distinta: elegí si el impuesto ya está incluido en los precios cargados en el menú, si se suma aparte al cobrar (como un sales tax), o si directamente no aplica. Se refleja en el POS, el ticket y la factura.</p>
+          <div class="grid grid-2">
+            <div class="field"><label>Nombre del impuesto</label><input id="set-tax-label" value="${s.tax_label || "IVA"}" placeholder="IVA, Sales tax, etc." /></div>
+            <div class="field"><label>Alícuota (%)</label><input id="set-tax-rate" type="number" step="0.01" min="0" max="100" value="${s.tax_rate || 0}" /></div>
+          </div>
+          <div class="field">
+            <label>Modo</label>
+            <select id="set-tax-mode">
+              <option value="NONE" ${(s.tax_mode || "NONE") === "NONE" ? "selected" : ""}>No aplicar</option>
+              <option value="INCLUSIVE" ${s.tax_mode === "INCLUSIVE" ? "selected" : ""}>Incluido en el precio (solo se discrimina en la factura)</option>
+              <option value="ADDITIVE" ${s.tax_mode === "ADDITIVE" ? "selected" : ""}>Se suma aparte (el cliente paga precio + impuesto)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="save-settings-tax">Guardar configuración de impuesto</button>
+        </div>
+        <div class="card mb16">
+          <h3 style="margin-top:0">Envío de facturas por mail</h3>
+          <p class="small muted">Opcional. Completá esto si querés poder mandar la factura por mail directamente desde un pedido, además de descargarla en PDF. Si no lo configurás, siempre podés descargar el PDF igual.</p>
+          <p class="small" style="background:#fff8e1;padding:8px;border-radius:6px">
+            <strong>Importante si la app está alojada en el plan gratuito de Render:</strong> desde septiembre de 2025 ese plan bloquea las conexiones salientes por SMTP (puertos 25/465/587), así que la configuración de SMTP de abajo no va a funcionar ahí. Para ese caso usá la <strong>API key de Resend</strong> (es gratis para empezar, funciona por HTTPS y no choca con ese bloqueo): creá una cuenta en resend.com, generá una API key y pegala acá.
+          </p>
+          <div class="field"><label>API key de Resend ${s.resend_api_key_set ? "(ya configurada, dejá en blanco para no cambiarla)" : ""}</label><input id="set-resend-key" type="password" placeholder="re_xxxxxxxx" /></div>
+          <div class="field"><label>Email remitente</label><input id="set-smtp-from" value="${s.smtp_from || ""}" placeholder="facturas@turestaurante.com" /></div>
+          <button class="btn btn-primary" id="save-settings-2">Guardar email remitente / Resend</button>
+          <hr style="margin:16px 0;border-color:var(--border)" />
+          <p class="small muted">Alternativa: SMTP tradicional (solo funciona si la app NO está en el plan gratuito de Render, o si se pasó a un plan pago).</p>
           <div class="grid grid-2">
             <div class="field"><label>Host SMTP</label><input id="set-smtp-host" value="${s.smtp_host || ""}" placeholder="smtp.gmail.com" /></div>
             <div class="field"><label>Puerto</label><input id="set-smtp-port" type="number" value="${s.smtp_port || 587}" /></div>
           </div>
           <div class="field"><label>Usuario SMTP</label><input id="set-smtp-user" value="${s.smtp_user || ""}" /></div>
           <div class="field"><label>Contraseña SMTP ${s.smtp_pass_set ? "(ya configurada, dejá en blanco para no cambiarla)" : ""}</label><input id="set-smtp-pass" type="password" /></div>
-          <div class="field"><label>Email remitente</label><input id="set-smtp-from" value="${s.smtp_from || ""}" /></div>
-          <button class="btn btn-primary" id="save-settings-2">Guardar configuración de mail</button>
+          <button class="btn" id="save-settings-smtp">Guardar configuración de SMTP</button>
         </div>`;
     }
     function wireParametros() {
@@ -690,18 +758,40 @@
       async function saveMailData() {
         try {
           await apiWithOverride("/settings", { method: "PATCH", body: {
-            smtpHost: document.getElementById("set-smtp-host").value || null,
-            smtpPort: Number(document.getElementById("set-smtp-port").value) || null,
-            smtpUser: document.getElementById("set-smtp-user").value || null,
-            smtpPass: document.getElementById("set-smtp-pass").value || undefined,
+            resendApiKey: document.getElementById("set-resend-key").value || undefined,
             smtpFrom: document.getElementById("set-smtp-from").value || null,
           }}, "settings:manage");
           toast("Configuración de mail guardada.", "success");
           await refresh();
         } catch (err) { toast(err.message, "error"); }
       }
+      async function saveSmtpData() {
+        try {
+          await apiWithOverride("/settings", { method: "PATCH", body: {
+            smtpHost: document.getElementById("set-smtp-host").value || null,
+            smtpPort: Number(document.getElementById("set-smtp-port").value) || null,
+            smtpUser: document.getElementById("set-smtp-user").value || null,
+            smtpPass: document.getElementById("set-smtp-pass").value || undefined,
+          }}, "settings:manage");
+          toast("Configuración de SMTP guardada.", "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      }
+      async function saveTaxData() {
+        try {
+          await apiWithOverride("/settings", { method: "PATCH", body: {
+            taxLabel: document.getElementById("set-tax-label").value || "IVA",
+            taxRate: Number(document.getElementById("set-tax-rate").value) || 0,
+            taxMode: document.getElementById("set-tax-mode").value,
+          }}, "settings:manage");
+          toast("Configuración de impuesto guardada.", "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      }
       document.getElementById("save-settings-1").addEventListener("click", saveBusinessData);
+      document.getElementById("save-settings-tax").addEventListener("click", saveTaxData);
       document.getElementById("save-settings-2").addEventListener("click", saveMailData);
+      document.getElementById("save-settings-smtp").addEventListener("click", saveSmtpData);
     }
 
     // ---------------------------------------------------------------------
@@ -764,6 +854,126 @@
     }
     function wireAuditoria() {}
 
+    // ---------------------------------------------------------------------
+    // Plantillas de factura (editor básico: logo, textos, color, preset)
+    // ---------------------------------------------------------------------
+    const TEMPLATE_LAYOUTS = { CLASICO: "Clásico", MODERNO: "Moderno", MINIMAL: "Minimalista" };
+    function renderPlantillas() {
+      return `
+        <div class="card mb16">
+          <div class="flex-between mb8"><h3 style="margin:0">Plantillas de factura</h3><button class="btn btn-primary btn-sm" id="add-template">+ Nueva plantilla</button></div>
+          <p class="small muted">Editor básico para personalizar el diseño de las facturas: logo, textos de encabezado/pie, color y un preset de estilo. Podés tener varios modelos y elegir cuál usar (o marcar uno como predeterminado) al emitir una factura.</p>
+          ${invoiceTemplates.length === 0 ? `<p class="small muted">Todavía no creaste ninguna plantilla: se usa el diseño de fábrica al facturar.</p>` : ""}
+          <div class="grid grid-2">
+            ${invoiceTemplates.map(t => `
+              <div class="card mb8" style="background:var(--surface-alt)">
+                <div class="flex-between">
+                  <strong>${t.name} ${t.is_default ? '<span class="pill pill-libre">Predeterminada</span>' : ""}</strong>
+                  <span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${t.accent_color}"></span>
+                </div>
+                <p class="small muted">Estilo: ${TEMPLATE_LAYOUTS[t.layout] || t.layout} ${t.has_logo ? "· con logo" : "· sin logo"}</p>
+                <div class="flex-gap">
+                  <button class="btn btn-sm" data-edit-template="${t.id}">Editar</button>
+                  ${!t.is_default ? `<button class="btn btn-sm" data-default-template="${t.id}">Usar como predeterminada</button>` : ""}
+                  <button class="btn btn-sm btn-danger" data-delete-template="${t.id}">Eliminar</button>
+                </div>
+              </div>`).join("")}
+          </div>
+        </div>`;
+    }
+
+    function templateFormModal(existing) {
+      const overlay = showModal(`
+        <h2>${existing ? "Editar plantilla" : "Nueva plantilla"}</h2>
+        <div class="field"><label>Nombre</label><input id="tpl-name" value="${existing?.name || ""}" placeholder="Ej: Modelo con logo" /></div>
+        <div class="grid grid-2">
+          <div class="field"><label>Estilo</label>
+            <select id="tpl-layout">
+              ${Object.entries(TEMPLATE_LAYOUTS).map(([k, v]) => `<option value="${k}" ${existing?.layout === k ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field"><label>Color de acento</label><input id="tpl-color" type="color" value="${existing?.accent_color || "#2F5233"}" /></div>
+        </div>
+        <div class="field"><label>Logo (opcional, imagen)${existing?.has_logo ? " — ya tiene uno cargado; subí otro para reemplazarlo" : ""}</label><input id="tpl-logo" type="file" accept="image/*" /></div>
+        <div class="field"><label>Texto de encabezado (opcional)</label><input id="tpl-header" value="${existing?.header_text || ""}" placeholder="Ej: ¡Gracias por elegirnos!" /></div>
+        <div class="field"><label>Texto de pie (opcional)</label><input id="tpl-footer" value="${existing?.footer_text || ""}" placeholder="Ej: Seguinos en @nuestra_cuenta" /></div>
+        <div class="field"><label><input type="checkbox" id="tpl-default" style="width:auto" ${existing?.is_default ? "checked" : ""} /> Usar como predeterminada</label></div>
+        <button class="btn btn-primary" id="tpl-save">Guardar</button>
+      `);
+
+      function readLogoAsBase64() {
+        return new Promise((resolve) => {
+          const file = overlay.querySelector("#tpl-logo").files[0];
+          if (!file) return resolve(undefined);
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      overlay.querySelector("#tpl-save").addEventListener("click", async () => {
+        try {
+          const logoBase64 = await readLogoAsBase64();
+          const body = {
+            name: overlay.querySelector("#tpl-name").value,
+            layout: overlay.querySelector("#tpl-layout").value,
+            accentColor: overlay.querySelector("#tpl-color").value,
+            headerText: overlay.querySelector("#tpl-header").value || null,
+            footerText: overlay.querySelector("#tpl-footer").value || null,
+            isDefault: overlay.querySelector("#tpl-default").checked,
+          };
+          if (logoBase64 !== undefined) body.logoBase64 = logoBase64;
+          if (existing) {
+            await apiWithOverride(`/invoice-templates/${existing.id}`, { method: "PATCH", body }, "invoices:manageTemplates");
+          } else {
+            await apiWithOverride("/invoice-templates", { method: "POST", body }, "invoices:manageTemplates");
+          }
+          closeModal(overlay);
+          await refresh();
+          toast("Plantilla guardada.", "success");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+
+    function wirePlantillas() {
+      document.getElementById("add-template").addEventListener("click", () => templateFormModal(null));
+      document.querySelectorAll("[data-edit-template]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          try {
+            const data = await api(`/invoice-templates/${btn.dataset.editTemplate}`);
+            templateFormModal(data.template);
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        })
+      );
+      document.querySelectorAll("[data-default-template]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          try {
+            await apiWithOverride(`/invoice-templates/${btn.dataset.defaultTemplate}`, { method: "PATCH", body: { isDefault: true } }, "invoices:manageTemplates");
+            await refresh();
+            toast("Plantilla marcada como predeterminada.", "success");
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        })
+      );
+      document.querySelectorAll("[data-delete-template]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("¿Eliminar esta plantilla? Las facturas ya emitidas con ella no se modifican.")) return;
+          try {
+            await apiWithOverride(`/invoice-templates/${btn.dataset.deleteTemplate}`, { method: "DELETE" }, "invoices:manageTemplates");
+            await refresh();
+            toast("Plantilla eliminada.", "success");
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        })
+      );
+    }
+
     const TABS = {
       productos: { render: renderProductos, wire: wireProductos },
       categorias: { render: renderCategorias, wire: wireCategorias },
@@ -775,6 +985,7 @@
       usuarios: { render: renderUsuarios, wire: wireUsuarios },
       permisos: { render: renderPermisos, wire: wirePermisos },
       parametros: { render: renderParametros, wire: wireParametros },
+      plantillas: { render: renderPlantillas, wire: wirePlantillas },
       auditoria: { render: renderAuditoria, wire: wireAuditoria },
     };
     let activeTab = "productos";

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cierre de caja - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <div class="flex-between mb16">
+      <h2 style="margin:0">Cierre de caja</h2>
+    </div>
+
+    <div class="card mb16">
+      <h3 style="margin-top:0">Resumen del período abierto</h3>
+      <p class="small muted">Desde el último cierre (o desde el principio, si todavía no hiciste ninguno) hasta este momento. Al confirmar, se guarda este resumen como el cierre del día y arranca un período nuevo.</p>
+      <div id="preview-summary"></div>
+      <button class="btn btn-primary" id="close-cash-btn">Cerrar caja ahora</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Historial de cierres</h3>
+      <table>
+        <thead><tr><th>Cerrado</th><th>Período</th><th>Pedidos</th><th>Ventas totales</th><th>Por medio de pago</th><th>Cerrado por</th></tr></thead>
+        <tbody id="closures-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"]);
+    if (user) {
+      renderNav();
+
+      function fmtDate(d) {
+        return new Date(d).toLocaleString("es-AR");
+      }
+
+      function methodsSummary(obj) {
+        const entries = Object.entries(obj || {});
+        if (entries.length === 0) return "-";
+        return entries.map(([m, v]) => `${m}: $${money(v)}`).join(" · ");
+      }
+
+      async function loadPreview() {
+        const el = document.getElementById("preview-summary");
+        try {
+          const data = await api("/cash-closures/preview");
+          el.innerHTML = `
+            <div class="grid grid-2">
+              <div><span class="small muted">Desde</span><br />${fmtDate(data.periodFrom)}</div>
+              <div><span class="small muted">Hasta (ahora)</span><br />${fmtDate(data.periodTo)}</div>
+            </div>
+            <div class="mt16 grid grid-2">
+              <div><span class="small muted">Pedidos cerrados</span><br /><strong>${data.orderCount}</strong></div>
+              <div><span class="small muted">Ventas totales</span><br /><strong>$${money(data.totalSales)}</strong></div>
+            </div>
+            <div class="mt16"><span class="small muted">Por medio de pago</span><br />${methodsSummary(data.totalsByMethod)}</div>
+          `;
+        } catch (err) {
+          el.innerHTML = `<p class="small muted">No se pudo calcular el resumen: ${err.message}</p>`;
+        }
+      }
+
+      async function loadHistory() {
+        const data = await api("/cash-closures");
+        const body = document.getElementById("closures-body");
+        if (data.closures.length === 0) {
+          body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">Todavía no se hizo ningún cierre.</td></tr>`;
+          return;
+        }
+        body.innerHTML = data.closures
+          .map(
+            (c) => `
+          <tr>
+            <td>${fmtDate(c.created_at)}</td>
+            <td>${fmtDate(c.period_from)} → ${fmtDate(c.period_to)}</td>
+            <td>${c.order_count}</td>
+            <td>$${money(c.total_sales)}</td>
+            <td class="small">${methodsSummary(c.totals_by_method)}</td>
+            <td>${c.closed_by_name || "-"}</td>
+          </tr>`
+          )
+          .join("");
+      }
+
+      document.getElementById("close-cash-btn").addEventListener("click", async () => {
+        if (!confirm("¿Confirmás el cierre de caja? Se va a guardar el resumen del período actual y arrancar uno nuevo.")) return;
+        try {
+          await api("/cash-closures", { method: "POST" });
+          toast("Caja cerrada.", "success");
+          await Promise.all([loadPreview(), loadHistory()]);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+
+      loadPreview();
+      loadHistory();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ayuda - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .help-section summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+    .help-section[open] summary { color: var(--primary-dark); }
+    .help-section p, .help-section li { color: var(--text-muted); }
+    .help-section ul { margin: 6px 0 12px 18px; }
+    .novedad-item { border-left: 3px solid var(--primary); padding: 4px 12px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <h2 class="mb16">Ayuda y manual de usuario</h2>
+
+    <div class="card mb16">
+      <h3 style="margin-top:0">Novedades</h3>
+      <p class="small muted">Lo que se agregó recientemente a la app, para que no se te pase ninguna funcionalidad.</p>
+      <div class="novedad-item"><strong>Cierre automático al cobrar:</strong> al registrar un pago que cubre el total, el pedido se cierra solo y la mesa queda libre para un segundo servicio — ya no hace falta un paso extra para cerrar.</div>
+      <div class="novedad-item"><strong>Cierre de caja:</strong> nueva sección "Cierre de caja" con un resumen simple (pedidos, ventas totales y por medio de pago) e historial de cierres anteriores.</div>
+      <div class="novedad-item"><strong>IVA / sales tax configurable:</strong> en Administración → Parámetros podés definir una alícuota y elegir si va incluida en los precios o se suma aparte, según la legislación de cada país.</div>
+      <div class="novedad-item"><strong>Reparto de sabores/variantes:</strong> para productos como empanadas, ahora se puede repartir la cantidad total entre varias opciones (ej: 12 = 4 J&Q + 2 carne + 6 verdura y queso) desde un grupo de adicionales marcado como "reparto de cantidades".</div>
+      <div class="novedad-item"><strong>Editar productos:</strong> botón "Editar" en Administración → Productos para modificar nombre, precio, categoría, etc. sin tener que borrar y recrear el producto.</div>
+      <div class="novedad-item"><strong>Plantillas de factura con logo:</strong> en Administración → Plantillas de factura podés crear varios modelos con tu logo, colores y textos personalizados, y elegir cuál usar por defecto.</div>
+      <div class="novedad-item"><strong>Factura libre:</strong> desde Pedidos → "+ Nueva factura libre" podés emitir un comprobante manual (sin pedido asociado) para cuando hay un problema técnico con el pedido.</div>
+      <div class="novedad-item"><strong>Facturar directo desde la lista de pedidos:</strong> ya no hace falta entrar al detalle de un pedido cerrado para facturarlo; hay un botón "Facturar" / "PDF" directo en la lista de Pedidos.</div>
+      <div class="novedad-item"><strong>Impresión de tickets:</strong> botón "Imprimir ticket" (vía el navegador) y "Descargar ticket (.txt)" en cada pedido, listo para una impresora de tickets térmica.</div>
+      <div class="novedad-item"><strong>Envío de facturas por mail sin SMTP:</strong> ahora se puede configurar una API key de Resend como alternativa al SMTP tradicional (necesario si la app corre en el plan gratuito de Render, que bloquea SMTP desde septiembre de 2025).</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Manual por sección</h3>
+
+      <details class="help-section" open>
+        <summary>Salón y mesas</summary>
+        <p>Muestra las mesas de cada salón con su estado (libre, ocupada, reservada, pendiente de pago). Tocar una mesa libre abre un pedido nuevo para esa mesa; tocar una ocupada te lleva al pedido en curso.</p>
+      </details>
+
+      <details class="help-section">
+        <summary>Pedidos (POS)</summary>
+        <ul>
+          <li><strong>Crear pedido:</strong> desde una mesa (Salón) o con "+ Retiro / Delivery" en Pedidos, cargando nombre/teléfono y, si es delivery, la dirección.</li>
+          <li><strong>Agregar productos:</strong> tocá el producto, elegí variante y adicionales si tiene, y la cantidad. Si el producto tiene un grupo "de reparto de cantidades" (por ejemplo, sabores de empanadas), repartí la cantidad total entre las opciones en vez de tildarlas — la app valida que la suma coincida.</li>
+          <li><strong>Enviar a cocina:</strong> manda los ítems pendientes al tablero de Cocina.</li>
+          <li><strong>Aplicar descuento, anular ítems, pedir la cuenta, cobrar y cancelar</strong> el pedido, según tu permiso.</li>
+          <li><strong>Cobrar:</strong> se pueden registrar varios pagos (dividir la cuenta). Cuando el total pagado cubre el total del pedido, se cierra automáticamente y la mesa queda libre.</li>
+          <li><strong>Imprimir/descargar ticket:</strong> "Imprimir ticket" abre el diálogo de impresión del navegador (formateado para impresoras de tickets angostas); "Descargar ticket (.txt)" genera un archivo de texto equivalente si todavía no tenés una impresora conectada.</li>
+          <li><strong>Facturar:</strong> una vez cerrado, aparece "Emitir factura" (o directamente desde la lista de Pedidos). Podés descargar el PDF o enviarlo por mail.</li>
+        </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Pedidos: lista, facturación y factura libre</summary>
+        <ul>
+          <li>La lista de Pedidos tiene pestañas por estado (Abiertos/Cerrados/Cancelados) y una columna "Factura" con el botón "Facturar" (si todavía no tiene) o "PDF" (para descargarla) sin tener que entrar al detalle.</li>
+          <li><strong>Factura libre:</strong> "+ Nueva factura libre" abre un formulario para cargar ítems a mano (descripción, cantidad, precio) y emitir un comprobante sin pedido asociado — pensado para cuando hay un problema técnico con el pedido original.</li>
+        </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Cocina (KDS)</summary>
+        <p>Tablero con las comandas enviadas, agrupadas por estación. Se puede avanzar el estado de cada ítem (pendiente → en preparación → listo → entregado) según el permiso del usuario.</p>
+      </details>
+
+      <details class="help-section">
+        <summary>Cierre de caja</summary>
+        <p>Muestra un resumen simple (cantidad de pedidos, ventas totales y por medio de pago) del período transcurrido desde el último cierre. "Cerrar caja ahora" guarda ese resumen como el cierre del día y arranca un período nuevo. Abajo queda el historial de todos los cierres anteriores.</p>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Productos, Categorías, Adicionales, Estaciones</summary>
+        <ul>
+          <li><strong>Productos:</strong> crear, activar/desactivar, editar (nombre, descripción, categoría, estación, precio, imagen, compuesto) y cargar la receta de insumos (para descuento de inventario).</li>
+          <li><strong>Adicionales:</strong> grupos de opciones para los productos (ej. "Punto de la carne", "Extras"). Un grupo puede marcarse como "reparto de cantidades" para repartir la cantidad total del ítem entre sus opciones en vez de tildarlas (ver sabores de empanadas más arriba).</li>
+          <li><strong>Estaciones:</strong> las "cocinas" o puestos de preparación (parrilla, bar, postres, etc.) que agrupan las comandas en el tablero de Cocina.</li>
+        </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Salón y mesas, Inventario</summary>
+        <ul>
+          <li><strong>Salón y mesas:</strong> crear salones y mesas, y organizarlas arrastrándolas en el plano.</li>
+          <li><strong>Inventario:</strong> insumos con stock y costo por unidad; al vender un producto con receta cargada, se descuenta el stock automáticamente y queda un historial de movimientos.</li>
+        </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Reportes</summary>
+        <p>Descarga un Excel (cuenta de resultados) con ventas totales, costo de mercadería vendida (según las recetas de Inventario), ganancia bruta, ventas por producto y pagos por medio, para el rango de fechas elegido.</p>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Usuarios y Permisos</summary>
+        <ul>
+          <li><strong>Usuarios:</strong> alta de cuentas por rol (Administrador, Dueño/Gerente, Encargado, Cajero, Mozo, Cocina).</li>
+          <li><strong>Permisos:</strong> activar o desactivar acciones puntuales por rol (por ejemplo, si un Cajero puede aplicar descuentos). El Administrador siempre mantiene todos los permisos.</li>
+          <li><strong>Autorización de supervisor:</strong> si a tu usuario le falta un permiso puntual, la app te ofrece pedirle a un Encargado/Dueño/Admin que lo autorice ahí mismo con su email y contraseña, sin tener que cerrar tu sesión.</li>
+          <li><strong>Cambiar mi contraseña:</strong> disponible desde el botón de tu usuario, arriba a la derecha, en cualquier pantalla.</li>
+        </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Parámetros</summary>
+        <ul>
+          <li><strong>Datos del negocio:</strong> nombre, razón social, NIT, dirección fiscal, moneda y prefijo/numeración de comprobantes.</li>
+          <li><strong>IVA / Sales tax:</strong> elegí el nombre del impuesto, la alícuota y si va incluido en los precios (solo se discrimina en la factura) o se suma aparte al cobrar (el cliente paga precio + impuesto), según la legislación de tu país.</li>
+          <li><strong>Envío de facturas por mail:</strong> configurá una API key de Resend (recomendado, funciona incluso en el plan gratuito de Render) o los datos de un servidor SMTP propio.</li>
+        </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Plantillas de factura</summary>
+        <p>Editor básico para personalizar el diseño de las facturas: subí un logo, elegí un color de acento, un estilo (Clásico/Moderno/Minimalista) y textos de encabezado/pie. Podés guardar varios modelos y marcar uno como predeterminado; también se puede elegir cuál usar al emitir una factura puntual.</p>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Auditoría</summary>
+        <p>Registro histórico de acciones relevantes (pagos, cierres, cambios de parámetros, autorizaciones de supervisor, etc.) con quién y cuándo las hizo.</p>
+      </details>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"]);
+    if (user) renderNav();
+  </script>
+</body>
+</html>

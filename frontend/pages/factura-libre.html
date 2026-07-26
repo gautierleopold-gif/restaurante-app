@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nueva factura libre - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <div class="flex-between mb16">
+      <h2 style="margin:0">Nueva factura libre</h2>
+      <a href="/pages/pedidos.html" class="btn">← Volver a pedidos</a>
+    </div>
+    <p class="small muted">Para emitir un comprobante que no está ligado a un pedido del POS (por ejemplo, si hay un problema técnico con el pedido): elegí manualmente qué poner adentro.</p>
+
+    <div class="card mb16">
+      <h3 style="margin-top:0">Cliente</h3>
+      <div class="grid grid-2">
+        <div class="field"><label>Nombre / razón social</label><input id="fi-name" /></div>
+        <div class="field"><label>NIT / identificación fiscal (opcional)</label><input id="fi-taxid" /></div>
+      </div>
+      <div class="field"><label>Email (opcional, para poder enviarla por mail)</label><input id="fi-email" type="email" /></div>
+    </div>
+
+    <div class="card mb16">
+      <h3 style="margin-top:0">Ítems</h3>
+      <table>
+        <thead><tr><th>Descripción</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th><th></th></tr></thead>
+        <tbody id="items-body"></tbody>
+      </table>
+      <button class="btn btn-sm mt16" id="add-row">+ Agregar ítem</button>
+      <div class="mt16" id="totals-preview"></div>
+    </div>
+
+    <button class="btn btn-primary" id="issue-btn">Emitir factura</button>
+
+    <div class="card mt16" id="result-card" style="display:none"></div>
+
+    <div class="card mt16">
+      <h3 style="margin-top:0">Historial de facturas libres</h3>
+      <table>
+        <thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Total</th><th></th></tr></thead>
+        <tbody id="history-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"]);
+    if (user) {
+      renderNav();
+      let branch = null;
+      let rowCount = 0;
+
+      function addRow() {
+        rowCount++;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><input class="fi-desc" placeholder="Ej: Consumición varios" /></td>
+          <td><input class="fi-qty" type="number" value="1" min="0.01" step="0.01" style="width:80px" /></td>
+          <td><input class="fi-price" type="number" value="0" min="0" step="0.01" style="width:110px" /></td>
+          <td class="fi-line-total small muted">$0,00</td>
+          <td><button class="btn btn-sm btn-danger" data-remove-row>x</button></td>
+        `;
+        document.getElementById("items-body").appendChild(tr);
+        tr.querySelectorAll("input").forEach((inp) => inp.addEventListener("input", updateTotals));
+        tr.querySelector("[data-remove-row]").addEventListener("click", () => {
+          tr.remove();
+          updateTotals();
+        });
+        updateTotals();
+      }
+
+      function updateTotals() {
+        let subtotal = 0;
+        document.querySelectorAll("#items-body tr").forEach((tr) => {
+          const qty = Number(tr.querySelector(".fi-qty").value) || 0;
+          const price = Number(tr.querySelector(".fi-price").value) || 0;
+          const lineTotal = qty * price;
+          subtotal += lineTotal;
+          tr.querySelector(".fi-line-total").textContent = `$${money(lineTotal)}`;
+        });
+        const taxRate = (branch && branch.taxRate) || 0;
+        const taxMode = (branch && branch.taxMode) || "NONE";
+        let total = subtotal;
+        let taxAmount = 0;
+        if (taxRate > 0 && taxMode === "ADDITIVE") {
+          taxAmount = subtotal * (taxRate / 100);
+          total = subtotal + taxAmount;
+        } else if (taxRate > 0 && taxMode === "INCLUSIVE") {
+          taxAmount = subtotal * (taxRate / (100 + taxRate));
+        }
+        document.getElementById("totals-preview").innerHTML = `
+          <div class="ticket-total-row"><span>Subtotal</span><span>$${money(subtotal)}</span></div>
+          ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch.taxLabel || "IVA"}${taxMode === "INCLUSIVE" ? " (incluido)" : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
+          <div class="ticket-total-row grand"><span>Total</span><span>$${money(total)}</span></div>
+        `;
+      }
+
+      document.getElementById("add-row").addEventListener("click", addRow);
+
+      document.getElementById("issue-btn").addEventListener("click", async () => {
+        const items = Array.from(document.querySelectorAll("#items-body tr"))
+          .map((tr) => ({
+            description: tr.querySelector(".fi-desc").value.trim(),
+            quantity: Number(tr.querySelector(".fi-qty").value) || 0,
+            unitPrice: Number(tr.querySelector(".fi-price").value) || 0,
+          }))
+          .filter((it) => it.description && it.quantity > 0);
+        if (items.length === 0) {
+          toast("Agregá al menos un ítem con descripción y cantidad.", "error");
+          return;
+        }
+        try {
+          const data = await api("/free-invoices", {
+            method: "POST",
+            body: {
+              customerName: document.getElementById("fi-name").value || undefined,
+              customerTaxId: document.getElementById("fi-taxid").value || undefined,
+              customerEmail: document.getElementById("fi-email").value || undefined,
+              items,
+            },
+          });
+          const inv = data.invoice;
+          const card = document.getElementById("result-card");
+          card.style.display = "block";
+          card.innerHTML = `
+            <h3 style="margin-top:0">Factura ${inv.number} emitida</h3>
+            <div class="flex-gap">
+              <button class="btn btn-sm" id="dl-pdf">Descargar PDF</button>
+              <button class="btn btn-sm" id="send-mail">Enviar por mail</button>
+            </div>
+          `;
+          card.querySelector("#dl-pdf").addEventListener("click", () => downloadInvoicePdf(inv.id, inv.number));
+          card.querySelector("#send-mail").addEventListener("click", () => sendInvoiceMail(inv.id));
+          toast("Factura emitida.", "success");
+          document.getElementById("items-body").innerHTML = "";
+          addRow();
+          document.getElementById("fi-name").value = "";
+          document.getElementById("fi-taxid").value = "";
+          document.getElementById("fi-email").value = "";
+          await loadHistory();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+
+      async function downloadInvoicePdf(id, number) {
+        try {
+          const res = await fetch(`/api/free-invoices/${id}/pdf`, {
+            headers: { Authorization: `Bearer ${getToken()}` },
+          });
+          if (!res.ok) throw new Error("No se pudo descargar la factura.");
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `factura-${number}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      }
+
+      async function sendInvoiceMail(id) {
+        const email = prompt("Enviar factura al email:");
+        if (!email) return;
+        try {
+          await api(`/free-invoices/${id}/email`, { method: "POST", body: { email } });
+          toast("Factura enviada por mail.", "success");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      }
+
+      async function loadHistory() {
+        const data = await api("/free-invoices");
+        const body = document.getElementById("history-body");
+        if (data.invoices.length === 0) {
+          body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Todavía no se emitió ninguna factura libre.</td></tr>`;
+          return;
+        }
+        body.innerHTML = data.invoices
+          .map(
+            (inv) => `
+          <tr>
+            <td>${inv.number}</td>
+            <td>${new Date(inv.created_at).toLocaleString("es-AR")}</td>
+            <td>${inv.customer_name || "Consumidor final"}</td>
+            <td>$${money(inv.total)}</td>
+            <td><button class="btn btn-sm" data-history-pdf="${inv.id}" data-number="${inv.number}">PDF</button></td>
+          </tr>`
+          )
+          .join("");
+        body.querySelectorAll("[data-history-pdf]").forEach((btn) =>
+          btn.addEventListener("click", () => downloadInvoicePdf(btn.dataset.historyPdf, btn.dataset.number))
+        );
+      }
+
+      (async () => {
+        try {
+          const data = await api("/settings/public");
+          branch = data.branch;
+        } catch (err) {
+          branch = null;
+        }
+        updateTotals();
+      })();
+
+      addRow();
+      loadHistory();
+    }
+  </script>
+</body>
+</html>
