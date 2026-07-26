@@ -57,6 +57,12 @@ const DEFAULT_PERMISSIONS = {
 
   // Reportes
   "reports:view": ["ADMIN", "DUENIO", "ENCARGADO"],
+
+  // Cierre de caja (fin del día)
+  "cashClosure:manage": ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"],
+
+  // Facturación libre / plantillas de factura
+  "invoices:manageTemplates": ["ADMIN", "DUENIO"],
 };
 
 // Etiquetas legibles para mostrar en la pantalla de Permisos, agrupadas por
@@ -117,6 +123,14 @@ const PERMISSION_GROUPS = [
   {
     label: "Reportes",
     permissions: [["reports:view", "Ver y exportar reportes"]],
+  },
+  {
+    label: "Cierre de caja",
+    permissions: [["cashClosure:manage", "Cerrar la caja del día y ver el historial de cierres"]],
+  },
+  {
+    label: "Facturación avanzada",
+    permissions: [["invoices:manageTemplates", "Administrar plantillas y logo de factura"]],
   },
 ];
 
