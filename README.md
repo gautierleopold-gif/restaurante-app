@@ -2,7 +2,25 @@
 
 Aplicación web para gestionar las operaciones diarias de un restaurante: ventas y pedidos (POS), salón y mesas, cocina (KDS), menú/productos, inventario, facturación, usuarios y permisos configurables, parámetros del negocio y reportes. Pensada para adaptarse a distintos tipos de operación (con mesas, solo para retiro/delivery, un solo local o varios salones) sin tocar código.
 
-Se probó de punta a punta (backend con pruebas de API y frontend con pruebas automatizadas de navegador) antes de cada entrega: login, creación de pedidos, modificadores/variantes, envío a cocina, cambios de estado en cocina, descuentos, pagos divididos, cierre de pedido, emisión y descarga de facturas, y toda la administración (productos, usuarios, permisos, inventario, salón, parámetros, auditoría), incluyendo el control de permisos por rol y la autorización de supervisor en caliente.
+Se probó de punta a punta (backend con pruebas de API y frontend con pruebas automatizadas de navegador) antes de cada entrega: login, creación de pedidos, modificadores/variantes, reparto de sabores/cantidades, envío a cocina, cambios de estado en cocina, descuentos, pagos divididos con cierre automático, cierre de caja, emisión y descarga de facturas (de pedido y libres), plantillas de factura con logo, IVA configurable, impresión/descarga de tickets, y toda la administración (productos, usuarios, permisos, inventario, salón, parámetros, auditoría), incluyendo el control de permisos por rol y la autorización de supervisor en caliente.
+
+## Novedades de esta entrega (Fase 3)
+
+A partir de una lista de ajustes pedidos sobre la Fase 2 ya en producción, se sumó lo siguiente:
+
+- **Cierre automático de pedido al cobrar**: cuando un pago registrado cubre el total del pedido, se cierra solo y la mesa queda libre (antes había que cerrar la mesa a mano después de cobrar).
+- **Cuenta de resultados corregida y con mejor estética**: se arregló el cálculo del costo de mercadería vendida (no contaba el consumo de ajustes de cantidad, y no descontaba la reposición de stock por anulaciones) y el Excel ahora tiene título, colores, bordes, autofiltro y encabezado congelado.
+- **Cierre de caja**: sección nueva con un resumen simple (pedidos, ventas totales, por medio de pago) del período transcurrido desde el último cierre, más su historial.
+- **Envío de facturas por mail sin SMTP**: se puede configurar una API key de Resend como alternativa al SMTP tradicional — necesario porque desde septiembre de 2025 Render bloquea el tráfico saliente por los puertos de SMTP en su plan gratuito.
+- **Novedades / manual de usuario**: nueva sección "Ayuda" con un resumen de novedades y un manual por sección de toda la app.
+- **Editor básico de plantillas de factura**: logo (guardado en base64, no en el disco del hosting), color de acento, textos de encabezado/pie y un preset de estilo (Clásico/Moderno/Minimalista); se pueden guardar varios modelos y elegir cuál usar.
+- **Dirección de entrega solo para delivery**: se corrigió un bug donde quedaba guardada una dirección vieja en pedidos de "Retiro en el local".
+- **Reparto de sabores/variantes por cantidad**: un grupo de adicionales se puede marcar como "reparto de cantidades" para repartir la cantidad total de un ítem entre varias opciones (ej: 12 empanadas = 4 J&Q + 2 carne + 6 verdura y queso), aplicable a cualquier producto.
+- **Editar productos** sin borrarlos, desde Administración → Productos.
+- **Facturar directo desde la lista de Pedidos**, sin entrar al detalle del pedido (sirve en particular para pedidos de Retiro/Delivery).
+- **Factura libre**: emitir un comprobante con ítems cargados a mano, sin pedido asociado, para cuando hay un problema técnico con el pedido original.
+- **IVA / sales tax configurable**: alícuota y modo (incluido en el precio o sumado aparte) por sucursal, según la legislación de cada país.
+- **Impresión de tickets vía el navegador**: botón "Imprimir ticket" (con una hoja de estilos pensada para impresoras térmicas de 58/80mm) y "Descargar ticket (.txt)" como alternativa mientras no haya una impresora conectada.
 
 ## Qué incluye la aplicación
 
@@ -25,7 +43,7 @@ Todavía no están implementados, y quedan como próximos pasos naturales sobre 
 
 1. **Clientes (CRM)**: ficha de cliente, historial de pedidos, frecuencia de compra, preferencias.
 2. **Delivery externo**: asignación de repartidor, cálculo de costo de envío, integraciones con plataformas externas vía API.
-3. **Caja formal**: apertura/cierre de caja, arqueos, ingresos y egresos manuales, control de diferencias.
+3. **Caja formal**: ya existe un cierre de caja simple (resumen de ventas y pagos por período, ver Cierre de caja), pero falta arqueo con fondo inicial declarado, ingresos/egresos manuales fuera de ventas y control de diferencias.
 4. **Reportes con gráficos**: la cuenta de resultados hoy se exporta a Excel; falta una vista con gráficos y filtros interactivos dentro de la propia app.
 5. **Compras y proveedores**: hoy el inventario permite cargar stock manualmente, pero falta un flujo de órdenes de compra a proveedores que actualice el stock automáticamente.
 6. **Multi-sucursal completo**: la base de datos ya tiene `branch_id` en las tablas principales y cada salón/mesa/insumo/factura ya está asociado a una sucursal, pero falta la interfaz para crear sucursales adicionales y cambiar de sucursal activa dentro de la misma cuenta.
@@ -38,8 +56,9 @@ Todavía no están implementados, y quedan como próximos pasos naturales sobre 
 - **Frontend**: HTML/CSS/JavaScript sin frameworks ni paso de compilación (fácil de leer, modificar y desplegar). El propio backend sirve estos archivos como estáticos, así que **todo el proyecto se despliega como un solo servicio**.
 - **Autenticación**: JWT (JSON Web Token) con contraseñas hasheadas (bcrypt).
 - **Permisos**: matriz de permisos por rol con valores por defecto en el backend (`backend/src/lib/permissions.js`), con posibilidad de overrides guardados en la tabla `role_permissions` y cacheados en memoria para no pegarle a la base de datos en cada request. Se aplica en cada endpoint mediante el middleware `requirePermission()`, que además acepta un token de autorización de supervisor (`X-Override-Token`) como alternativa cuando el usuario logueado no tiene el permiso. El rol Administrador siempre tiene acceso total, sin excepción. El frontend también oculta acciones según el rol y ofrece pedir autorización cuando corresponde, pero la validación real y obligatoria ocurre siempre en el backend.
-- **PDF y Excel**: los comprobantes de factura se generan con `pdfkit` (streameado como buffer, reutilizable tanto para la descarga HTTP como para el adjunto de mail); el reporte de cuenta de resultados se genera con `exceljs` como un workbook de varias hojas.
-- **Mail**: el envío de facturas por correo usa `nodemailer` con la configuración SMTP cargada por sucursal en Parámetros; si no está configurado, la app simplemente no ofrece la opción de enviar por mail (la descarga en PDF siempre funciona).
+- **PDF y Excel**: los comprobantes de factura se generan con `pdfkit` (streameado como buffer, reutilizable tanto para la descarga HTTP como para el adjunto de mail), parametrizado opcionalmente por una plantilla (logo, color, textos, preset de estilo — ver `backend/src/lib/invoicePdf.js` y `routes/invoiceTemplates.js`); el reporte de cuenta de resultados se genera con `exceljs` como un workbook de varias hojas con estilos.
+- **Mail**: el envío de facturas por correo (`backend/src/lib/email.js`) prueba primero una API key de Resend (HTTP, funciona incluso en el plan gratuito de Render) y si no hay una cargada, cae a SMTP tradicional vía `nodemailer` con la configuración de la sucursal en Parámetros; si no hay ninguna de las dos configurada, la app simplemente no ofrece la opción de enviar por mail (la descarga en PDF siempre funciona).
+- **IVA / sales tax**: cálculo centralizado en `backend/src/lib/tax.js`, usado tanto por pedidos (`routes/orders.js`) como por facturas libres (`routes/freeInvoices.js`), para que el resultado sea idéntico en los dos casos.
 
 Estructura de carpetas:
 
@@ -48,11 +67,14 @@ restaurante-app/
   backend/
     src/
       db/            esquema SQL, pool de conexión, scripts de migración/seed/reset
-      lib/            permisos, auditoría, inventario (descuento de stock), generación de PDF de factura
+      lib/            permisos, auditoría, inventario (descuento de stock), IVA/tax compartido,
+                       envío de mail (Resend o SMTP), generación de PDF de factura (con plantillas)
       middleware/     autenticación y autorización (incluye la autorización de supervisor)
-      routes/         auth, menu, tables (salón/mesas), orders (POS, incluye facturación), kitchen (KDS),
-                       inventory (insumos/recetas/movimientos), permissions, settings (parámetros),
-                       reports (cuenta de resultados en Excel), audit (auditoría)
+      routes/         auth, menu, tables (salón/mesas), orders (POS, incluye facturación e IVA),
+                       kitchen (KDS), inventory (insumos/recetas/movimientos), permissions,
+                       settings (parámetros), reports (cuenta de resultados en Excel), audit (auditoría),
+                       cashClosures (cierre de caja), invoiceTemplates (plantillas de factura),
+                       freeInvoices (factura libre sin pedido asociado)
       sockets/        (reservado para lógica de tiempo real adicional)
       index.js         servidor Express + Socket.IO + sirve el frontend
     package.json
@@ -61,12 +83,18 @@ restaurante-app/
     index.html         login
     pages/
       salon.html        plano visual del salón y las mesas
-      pos.html           punto de venta / comanda de un pedido, incluye emisión de factura
-      pedidos.html       listado de pedidos (útil para retiro/delivery sin mesa)
+      pos.html           punto de venta / comanda de un pedido, incluye emisión de factura,
+                         reparto de sabores/cantidades e impresión/descarga de tickets
+      pedidos.html       listado de pedidos (útil para retiro/delivery sin mesa), con acceso directo
+                         a facturar/descargar y acceso a "Nueva factura libre"
+      factura-libre.html emisión de una factura sin pedido asociado, con ítems cargados a mano
       cocina.html        tablero de cocina (KDS)
-      admin.html          administración: productos, categorías, adicionales, estaciones, salón/mesas
-                          (con edición por arrastre), inventario, reportes, usuarios, permisos,
-                          parámetros y auditoría
+      caja.html          cierre de caja: resumen del período abierto e historial de cierres
+      admin.html          administración: productos, categorías, adicionales (incl. grupos de reparto
+                          de cantidades), estaciones, salón/mesas (con edición por arrastre), inventario,
+                          reportes, usuarios, permisos, parámetros (incl. IVA y mail), plantillas de
+                          factura y auditoría
+      ayuda.html         novedades y manual de usuario por sección
     css/styles.css
     js/                 cliente API (incluye la autorización de supervisor), utilidades de interfaz,
                         socket.io (vendorizado)
@@ -169,6 +197,7 @@ Si preferís no usar el Blueprint, podés crear la base de datos y el servicio w
 - La base de datos PostgreSQL gratuita **expira a los 30 días** de creada, con 14 días de margen para pasarla a un plan pago antes de que Render la borre definitivamente junto con todos sus datos. Para un uso real (no solo para probar), vas a necesitar pasarla a un plan pago antes de ese plazo.
 - El servicio web gratuito **se "duerme" después de 15 minutos sin recibir visitas**, y la siguiente visita demora alrededor de un minuto en responder mientras se reactiva. Además, el plan gratuito incluye 750 horas de uso por mes.
 - El plan gratuito no tiene acceso a una consola/shell para correr comandos sueltos. Por eso el `startCommand` del `render.yaml` incluye `db:seed` en cada arranque: el script ya está hecho para detectar si los datos de ejemplo ya existen y no los vuelve a cargar, así que es seguro que se ejecute cada vez que el servicio arranca.
+- Desde el 26/9/2025, los "web services" del plan gratuito **bloquean el tráfico saliente a los puertos de SMTP** (25, 465, 587). Por eso el envío de facturas por mail (Administración → Parámetros) tiene como opción recomendada una API key de [Resend](https://resend.com) (funciona por HTTPS, no por SMTP): la app la usa automáticamente si está cargada, y solo cae a SMTP tradicional si no la configuraste (útil si en cambio alojás la app en un plan pago o en otro hosting sin esta restricción).
 
 Fuentes sobre los límites del plan gratuito: [Render — Deploy for Free](https://render.com/docs/free), [Platforms with a real free tier for developers in 2026](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026), [Render Postgres 2026: Pricing, Limits & Alternatives](https://kuberns.com/blogs/render-postgres-pricing-setup-limits/).
 
@@ -191,3 +220,6 @@ Railway, Fly.io o un VPS propio (con PM2 o Docker) funcionan igual de bien: son 
 - **Autorización de supervisor, no un segundo login**: el token de autorización dura 5 minutos y es válido solo para el permiso puntual que se pidió, no para toda la sesión. No reemplaza cambiar de usuario cuando corresponda (por ejemplo, para que quede registrado quién atendió realmente la mesa), es una salida rápida para excepciones puntuales.
 - **Descuento de stock por receta**: el inventario descuenta stock automáticamente solo si el producto tiene una receta cargada (botón "Receta" en Administración → Productos). Un producto sin receta se puede vender igual, simplemente no vas a ver su consumo reflejado en el inventario ni en el costo de mercadería vendida del reporte de cuenta de resultados.
 - **La factura generada no es un comprobante fiscal oficial**: es un PDF prolijo con los datos que cargaste en Parámetros (razón social, NIT, numeración correlativa), útil como recibo para el cliente y para tu propio control interno, pero no sustituye la integración con el sistema de facturación electrónica del organismo fiscal de tu país si tu operación la necesita.
+- **Cierre automático de pedido al cobrar**: al registrar un pago que cubre el total, el pedido pasa a CERRADO y la mesa a LIBRE en la misma operación. Si el pago es parcial, no pasa nada distinto a antes (el pedido sigue ABIERTO). El botón "Registrar y cerrar mesa" del modal de cobro sigue funcionando: si el pago ya cerró todo automáticamente, no vuelve a intentar cerrarlo.
+- **Reparto de sabores/variantes por cantidad, con precio uniforme**: las opciones de un grupo marcado como "reparto de cantidades" no suman precio individual (se asume que todas cuestan lo mismo, como distintos sabores de la misma empanada); si necesitás cobrar distinto por opción, usá en cambio un grupo de adicionales común (no de reparto).
+- **IVA/sales tax con dos modos, no uno fijo**: se decidió no imponer un único comportamiento porque la legislación varía mucho entre países. En modo "incluido" el total que paga el cliente no cambia (el impuesto solo se discrimina en la factura); en modo "se suma aparte" el total sí aumenta. El modo y la alícuota quedan grabados en cada factura al emitirla (no se recalculan después si cambiás la configuración), para que una factura ya emitida no cambie retroactivamente.
