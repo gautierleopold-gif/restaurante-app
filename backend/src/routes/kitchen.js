@@ -44,7 +44,7 @@ router.get(
     let modifiers = [];
     if (itemIds.length > 0) {
       const { rows: modRows } = await query(
-        `SELECT oim.order_item_id, m.name AS modifier_name FROM order_item_modifiers oim
+        `SELECT oim.order_item_id, oim.quantity, m.name AS modifier_name FROM order_item_modifiers oim
          JOIN modifiers m ON m.id = oim.modifier_id WHERE oim.order_item_id = ANY($1::uuid[])`,
         [itemIds]
       );
@@ -53,7 +53,9 @@ router.get(
 
     const items = rows.map((r) => ({
       ...r,
-      modifiers: modifiers.filter((m) => m.order_item_id === r.id).map((m) => m.modifier_name),
+      modifiers: modifiers
+        .filter((m) => m.order_item_id === r.id)
+        .map((m) => (Number(m.quantity) > 1 ? `${m.quantity}x ${m.modifier_name}` : m.modifier_name)),
     }));
 
     res.json({ items });

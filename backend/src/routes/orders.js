@@ -5,6 +5,7 @@ const { authenticate, requirePermission } = require("../middleware/auth");
 const { asyncHandler } = require("../lib/asyncHandler");
 const { logAction } = require("../lib/audit");
 const { applyStockDelta } = require("../lib/inventory");
+const { applyTax } = require("../lib/tax");
 
 const router = express.Router();
 router.use(authenticate);
@@ -75,6 +76,18 @@ async function fetchFullOrder(idOrClient, orderId) {
   };
 }
 
+// Resuelve la sucursal "activa" para un pedido: la propia si tiene una
+// asignada, o si no la primera que exista (mismo criterio que
+// routes/settings.js resolveBranch, pero sin depender de req).
+async function resolveBranchForTax(client, orderBranchId) {
+  if (orderBranchId) {
+    const { rows } = await client.query(`SELECT tax_rate, tax_mode FROM branches WHERE id = $1`, [orderBranchId]);
+    if (rows[0]) return rows[0];
+  }
+  const { rows } = await client.query(`SELECT tax_rate, tax_mode FROM branches ORDER BY created_at ASC LIMIT 1`);
+  return rows[0] || null;
+}
+
 async function recalcOrderTotals(client, orderId) {
   const { rows: items } = await client.query(
     `SELECT oi.quantity, oi.unit_price,
@@ -86,12 +99,17 @@ async function recalcOrderTotals(client, orderId) {
     (sum, it) => sum + Number(it.quantity) * (Number(it.unit_price) + Number(it.mod_total)),
     0
   );
-  const { rows: orderRows } = await client.query(`SELECT discount_percent FROM orders WHERE id = $1`, [orderId]);
+  const { rows: orderRows } = await client.query(`SELECT discount_percent, branch_id FROM orders WHERE id = $1`, [
+    orderId,
+  ]);
   const discountPercent = Number(orderRows[0]?.discount_percent || 0);
-  const total = subtotal * (1 - discountPercent / 100);
-  await client.query(`UPDATE orders SET subtotal = $1, total = $2 WHERE id = $3`, [
+  const subtotalAfterDiscount = subtotal * (1 - discountPercent / 100);
+  const branch = await resolveBranchForTax(client, orderRows[0]?.branch_id);
+  const { total, taxAmount } = applyTax(subtotalAfterDiscount, branch?.tax_rate, branch?.tax_mode);
+  await client.query(`UPDATE orders SET subtotal = $1, total = $2, tax_amount = $3 WHERE id = $4`, [
     subtotal.toFixed(2),
     total.toFixed(2),
+    taxAmount.toFixed(2),
     orderId,
   ]);
 }
@@ -118,10 +136,11 @@ router.get(
       where = `WHERE o.status = $${params.length}`;
     }
     const { rows } = await query(
-      `SELECT o.*, t.name AS table_name, u.name AS waiter_name
+      `SELECT o.*, t.name AS table_name, u.name AS waiter_name, i.id AS invoice_id, i.number AS invoice_number
        FROM orders o
        LEFT JOIN tables t ON t.id = o.table_id
        LEFT JOIN users u ON u.id = o.waiter_id
+       LEFT JOIN invoices i ON i.order_id = o.id
        ${where}
        ORDER BY o.created_at DESC
        LIMIT 200`,
@@ -217,7 +236,45 @@ const addItemSchema = z.object({
   quantity: z.number().int().min(1).default(1),
   notes: z.string().optional().nullable(),
   modifierIds: z.array(z.string().uuid()).default([]),
+  // Reparto de sabores/variantes (grupo con split_mode = true): cada entrada
+  // indica cuántas unidades de la cantidad total del ítem corresponden a esa
+  // opción. La suma debe dar exactamente `quantity`. Ver modifier_groups.split_mode.
+  flavorSplit: z.array(z.object({ modifierId: z.string().uuid(), quantity: z.number().int().min(0) })).default([]),
 });
+
+// Valida y castea order_item_modifiers para un grupo de reparto (split_mode):
+// cada modifierId debe pertenecer a un grupo split_mode=true efectivamente
+// asociado al producto, y la suma de cantidades debe dar exactamente
+// `itemQuantity` (ej: 12 empanadas = 4 J&Q + 2 carne + 6 verdura y queso).
+async function validateFlavorSplit(client, { productId, itemQuantity, flavorSplit }) {
+  if (!flavorSplit || flavorSplit.length === 0) return [];
+  const { rows: allowed } = await client.query(
+    `SELECT m.id, m.price, mg.split_mode
+     FROM modifiers m
+     JOIN modifier_groups mg ON mg.id = m.group_id
+     JOIN product_modifier_groups pmg ON pmg.modifier_group_id = mg.id
+     WHERE pmg.product_id = $1 AND mg.split_mode = true`,
+    [productId]
+  );
+  const allowedById = new Map(allowed.map((m) => [m.id, m]));
+  let sum = 0;
+  for (const entry of flavorSplit) {
+    if (!allowedById.has(entry.modifierId)) {
+      throw Object.assign(
+        new Error("Una de las opciones de reparto no es válida para este producto."),
+        { status: 400 }
+      );
+    }
+    sum += entry.quantity;
+  }
+  if (sum !== itemQuantity) {
+    throw Object.assign(
+      new Error(`El reparto de opciones debe sumar exactamente ${itemQuantity} (suma actualmente ${sum}).`),
+      { status: 400 }
+    );
+  }
+  return flavorSplit.filter((e) => e.quantity > 0);
+}
 
 router.post(
   "/:id/items",
@@ -266,6 +323,21 @@ router.post(
         }
       }
 
+      // Reparto de sabores/variantes (grupo split_mode): no suma precio (las
+      // opciones de un mismo reparto se asumen al mismo precio), solo
+      // registra cuántas unidades de la cantidad total van a cada opción.
+      const flavorSplit = await validateFlavorSplit(client, {
+        productId: data.productId,
+        itemQuantity: data.quantity,
+        flavorSplit: data.flavorSplit,
+      });
+      for (const entry of flavorSplit) {
+        await client.query(
+          `INSERT INTO order_item_modifiers (order_item_id, modifier_id, price, quantity) VALUES ($1,$2,0,$3)`,
+          [item.id, entry.modifierId, entry.quantity]
+        );
+      }
+
       // Si el producto tiene una receta cargada (Inventario), descuenta el
       // stock de los insumos correspondientes automáticamente.
       await applyStockDelta(client, {
@@ -294,33 +366,78 @@ router.patch(
     const schema = z.object({
       quantity: z.number().int().min(1).optional(),
       notes: z.string().optional().nullable(),
+      // Si el ítem tiene reparto de sabores (ver POST /:id/items) y se
+      // cambia la cantidad, hay que reenviar el reparto actualizado acá
+      // (tiene que sumar la nueva cantidad); si no se toca la cantidad, se
+      // puede mandar solo para corregir el reparto existente.
+      flavorSplit: z.array(z.object({ modifierId: z.string().uuid(), quantity: z.number().int().min(0) })).optional(),
     });
     const fields = schema.parse(req.body);
-    const keys = Object.keys(fields);
-    if (keys.length === 0) return res.status(400).json({ error: "Nada para actualizar." });
+    const keys = Object.keys(fields).filter((k) => k !== "flavorSplit");
+    if (keys.length === 0 && fields.flavorSplit === undefined) {
+      return res.status(400).json({ error: "Nada para actualizar." });
+    }
 
     await withTransaction(async (client) => {
-      let previousQuantity = null;
-      let productId = null;
-      if (fields.quantity !== undefined) {
-        const { rows: existing } = await client.query(
-          `SELECT quantity, product_id FROM order_items WHERE id = $1 AND order_id = $2`,
-          [req.params.itemId, req.params.id]
+      const { rows: existing } = await client.query(
+        `SELECT quantity, product_id FROM order_items WHERE id = $1 AND order_id = $2`,
+        [req.params.itemId, req.params.id]
+      );
+      if (!existing[0]) throw Object.assign(new Error("Ítem no encontrado."), { status: 404 });
+      const previousQuantity = existing[0].quantity;
+      const productId = existing[0].product_id;
+      const newQuantity = fields.quantity !== undefined ? fields.quantity : previousQuantity;
+
+      // Si el ítem ya tiene un reparto de sabores cargado y se cambia la
+      // cantidad sin reenviar el reparto actualizado, el reparto viejo queda
+      // desactualizado (no suma la nueva cantidad): se pide reenviarlo junto
+      // con el cambio de cantidad en vez de dejarlo inconsistente en silencio.
+      if (fields.quantity !== undefined && fields.quantity !== previousQuantity && fields.flavorSplit === undefined) {
+        const { rows: existingSplit } = await client.query(
+          `SELECT oim.id FROM order_item_modifiers oim
+           JOIN modifiers m ON m.id = oim.modifier_id
+           JOIN modifier_groups mg ON mg.id = m.group_id
+           WHERE oim.order_item_id = $1 AND mg.split_mode = true`,
+          [req.params.itemId]
         );
-        if (existing[0]) {
-          previousQuantity = existing[0].quantity;
-          productId = existing[0].product_id;
+        if (existingSplit.length > 0) {
+          throw Object.assign(
+            new Error("Este ítem tiene un reparto de sabores cargado: al cambiar la cantidad hay que reenviar el reparto actualizado (flavorSplit)."),
+            { status: 409 }
+          );
         }
       }
 
-      const colMap = { quantity: "quantity", notes: "notes" };
-      const setClause = keys.map((k, i) => `${colMap[k]} = $${i + 1}`).join(", ");
-      await client.query(
-        `UPDATE order_items SET ${setClause} WHERE id = $${keys.length + 1} AND order_id = $${keys.length + 2}`,
-        [...keys.map((k) => fields[k]), req.params.itemId, req.params.id]
-      );
+      if (keys.length > 0) {
+        const colMap = { quantity: "quantity", notes: "notes" };
+        const setClause = keys.map((k, i) => `${colMap[k]} = $${i + 1}`).join(", ");
+        await client.query(
+          `UPDATE order_items SET ${setClause} WHERE id = $${keys.length + 1} AND order_id = $${keys.length + 2}`,
+          [...keys.map((k) => fields[k]), req.params.itemId, req.params.id]
+        );
+      }
 
-      if (fields.quantity !== undefined && previousQuantity !== null) {
+      if (fields.flavorSplit !== undefined) {
+        const flavorSplit = await validateFlavorSplit(client, {
+          productId,
+          itemQuantity: newQuantity,
+          flavorSplit: fields.flavorSplit,
+        });
+        await client.query(
+          `DELETE FROM order_item_modifiers oim USING modifiers m, modifier_groups mg
+           WHERE oim.modifier_id = m.id AND m.group_id = mg.id
+             AND oim.order_item_id = $1 AND mg.split_mode = true`,
+          [req.params.itemId]
+        );
+        for (const entry of flavorSplit) {
+          await client.query(
+            `INSERT INTO order_item_modifiers (order_item_id, modifier_id, price, quantity) VALUES ($1,$2,0,$3)`,
+            [req.params.itemId, entry.modifierId, entry.quantity]
+          );
+        }
+      }
+
+      if (fields.quantity !== undefined && fields.quantity !== previousQuantity) {
         await applyStockDelta(client, {
           productId,
           deltaQuantity: fields.quantity - previousQuantity,
@@ -453,22 +570,64 @@ router.post(
     });
     const { method, amount } = schema.parse(req.body);
 
-    const { rows } = await query(
-      `INSERT INTO payments (order_id, method, amount, received_by_id) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.params.id, method, amount, req.user.id]
-    );
+    // Si el pago recién registrado cubre el total del pedido, se cierra el
+    // pedido automáticamente y se libera la mesa: se asume que al cobrar la
+    // gente se está yendo, permitiendo un segundo servicio en la mesa sin
+    // pasos manuales adicionales.
+    const { payment, autoClosed } = await withTransaction(async (client) => {
+      const { rows: orderRows } = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [
+        req.params.id,
+      ]);
+      const order = orderRows[0];
+      if (!order) throw Object.assign(new Error("Pedido no encontrado."), { status: 404 });
+
+      const { rows: paymentRows } = await client.query(
+        `INSERT INTO payments (order_id, method, amount, received_by_id) VALUES ($1,$2,$3,$4) RETURNING *`,
+        [req.params.id, method, amount, req.user.id]
+      );
+      const payment = paymentRows[0];
+
+      let autoClosed = false;
+      if (order.status === "ABIERTO") {
+        const { rows: totalRows } = await client.query(
+          `SELECT COALESCE(SUM(amount),0) AS total_paid FROM payments WHERE order_id = $1`,
+          [req.params.id]
+        );
+        const totalPaid = Number(totalRows[0].total_paid);
+        if (totalPaid + 0.01 >= Number(order.total)) {
+          await client.query(`UPDATE orders SET status = 'CERRADO', closed_at = now() WHERE id = $1`, [
+            req.params.id,
+          ]);
+          if (order.table_id) {
+            await client.query(`UPDATE tables SET status = 'LIBRE' WHERE id = $1`, [order.table_id]);
+          }
+          autoClosed = true;
+        }
+      }
+
+      return { payment, autoClosed };
+    });
 
     await logAction({
       userId: req.user.id,
       action: "PAYMENT_REGISTERED",
       entity: "Order",
       entityId: req.params.id,
-      details: { method, amount },
+      details: { method, amount, autoClosed },
     });
+    if (autoClosed) {
+      await logAction({
+        userId: req.user.id,
+        action: "ORDER_CLOSED",
+        entity: "Order",
+        entityId: req.params.id,
+        details: { reason: "Cierre automático al completar el pago." },
+      });
+    }
 
     const fullOrder = await fetchFullOrder(req.params.id);
     emitOrderUpdate(req, fullOrder);
-    res.status(201).json({ payment: rows[0], order: fullOrder });
+    res.status(201).json({ payment, order: fullOrder, autoClosed });
   })
 );
 
@@ -579,6 +738,7 @@ const issueInvoiceSchema = z.object({
   customerName: z.string().optional().nullable(),
   customerTaxId: z.string().optional().nullable(),
   customerEmail: z.string().email().optional().nullable(),
+  templateId: z.string().uuid().optional().nullable(),
 });
 
 // Emite un comprobante/factura para un pedido ya cerrado. El número se arma
@@ -625,9 +785,23 @@ router.post(
         branch.id,
       ]);
 
+      // Plantilla a usar: la elegida explícitamente, o si no la marcada
+      // como predeterminada de la sucursal, o si no ninguna (se usa el
+      // diseño de fábrica en invoicePdf.js).
+      let templateId = data.templateId || null;
+      if (!templateId) {
+        const { rows: defaultTemplate } = await client.query(
+          `SELECT id FROM invoice_templates WHERE branch_id = $1 AND is_default = true LIMIT 1`,
+          [branch.id]
+        );
+        templateId = defaultTemplate[0]?.id || null;
+      }
+
       const { rows } = await client.query(
-        `INSERT INTO invoices (order_id, branch_id, number, customer_name, customer_tax_id, customer_email, subtotal, total, issued_by_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        `INSERT INTO invoices
+           (order_id, branch_id, number, customer_name, customer_tax_id, customer_email,
+            subtotal, total, issued_by_id, tax_rate, tax_mode, tax_amount, tax_label, template_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
         [
           order.id,
           branch.id,
@@ -638,6 +812,11 @@ router.post(
           order.subtotal,
           order.total,
           req.user.id,
+          branch.tax_rate || 0,
+          branch.tax_mode || "NONE",
+          order.tax_amount || 0,
+          branch.tax_label || "IVA",
+          templateId,
         ]
       );
       return rows[0];
@@ -670,8 +849,13 @@ router.get(
       const { rows } = await query(`SELECT * FROM branches WHERE id = $1`, [order.branch_id]);
       branch = rows[0];
     }
+    let template = null;
+    if (order.invoice.template_id) {
+      const { rows } = await query(`SELECT * FROM invoice_templates WHERE id = $1`, [order.invoice.template_id]);
+      template = rows[0] || null;
+    }
 
-    const pdfBuffer = await buildInvoicePdfBuffer({ branch, order, invoice: order.invoice });
+    const pdfBuffer = await buildInvoicePdfBuffer({ branch, order, invoice: order.invoice, template });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="factura-${order.invoice.number}.pdf"`);
     res.send(pdfBuffer);
@@ -699,30 +883,24 @@ router.post(
       const { rows } = await query(`SELECT * FROM branches WHERE id = $1`, [order.branch_id]);
       branch = rows[0];
     }
-    if (!branch || !branch.smtp_host || !branch.smtp_user || !branch.smtp_pass) {
-      return res.status(400).json({
-        error:
-          "El envío de facturas por mail no está configurado. Completá los datos de SMTP en Administración → Parámetros.",
-      });
+
+    let template = null;
+    if (order.invoice.template_id) {
+      const { rows } = await query(`SELECT * FROM invoice_templates WHERE id = $1`, [order.invoice.template_id]);
+      template = rows[0] || null;
     }
 
-    const nodemailer = require("nodemailer");
     const { buildInvoicePdfBuffer } = require("../lib/invoicePdf");
-    const pdfBuffer = await buildInvoicePdfBuffer({ branch, order, invoice: order.invoice });
+    const { sendMailWithAttachment } = require("../lib/email");
+    const pdfBuffer = await buildInvoicePdfBuffer({ branch, order, invoice: order.invoice, template });
 
-    const transporter = nodemailer.createTransport({
-      host: branch.smtp_host,
-      port: branch.smtp_port || 587,
-      secure: Number(branch.smtp_port) === 465,
-      auth: { user: branch.smtp_user, pass: branch.smtp_pass },
-    });
-
-    await transporter.sendMail({
-      from: branch.smtp_from || branch.smtp_user,
+    await sendMailWithAttachment({
+      branch,
       to: targetEmail,
-      subject: `Factura ${order.invoice.number} - ${branch.legal_name || branch.name}`,
+      subject: `Factura ${order.invoice.number} - ${branch?.legal_name || branch?.name || "Restaurante"}`,
       text: `Adjuntamos el comprobante ${order.invoice.number} correspondiente a tu pedido #${order.code}. ¡Gracias por tu compra!`,
-      attachments: [{ filename: `factura-${order.invoice.number}.pdf`, content: pdfBuffer }],
+      attachmentFilename: `factura-${order.invoice.number}.pdf`,
+      attachmentBuffer: pdfBuffer,
     });
 
     await query(`UPDATE invoices SET emailed_at = now(), customer_email = $1 WHERE id = $2`, [

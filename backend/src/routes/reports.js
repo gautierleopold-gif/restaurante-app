@@ -48,11 +48,21 @@ router.get(
       [from, to]
     );
 
+    // Costo de mercadería vendida: se computa como el neto de todos los
+    // movimientos de stock ligados a pedidos cerrados en el rango (SALIDA
+    // suma consumo, ENTRADA resta), en vez de filtrar por el texto exacto de
+    // "reason". Esto evita dos errores: (1) no contar el consumo generado al
+    // aumentar la cantidad de un ítem ya cargado ("Ajuste de cantidad en
+    // pedido"), y (2) no descontar el stock que se repone al anular un ítem
+    // ("Anulación de ítem"), que antes se sumaba de más al costo.
     const { rows: cogsRows } = await query(
-      `SELECT COALESCE(SUM(sm.quantity * i.cost_per_unit), 0) AS cogs
+      `SELECT COALESCE(SUM(
+         CASE WHEN sm.type = 'SALIDA' THEN sm.quantity ELSE -sm.quantity END
+         * i.cost_per_unit
+       ), 0) AS cogs
        FROM stock_movements sm
        JOIN ingredients i ON i.id = sm.ingredient_id
-       WHERE sm.type = 'SALIDA' AND sm.reason = 'Venta' AND sm.order_id IN (
+       WHERE sm.order_id IN (
          SELECT id FROM orders WHERE status = 'CERRADO' AND closed_at BETWEEN $1 AND $2
        )`,
       [from, to]
@@ -76,22 +86,78 @@ router.get(
     workbook.creator = "Gestión Restaurante";
     workbook.created = new Date();
 
+    // --- Estilos compartidos --------------------------------------------
+    const BRAND_ARGB = "FF2F5233"; // verde oscuro
+    const STRIPE_ARGB = "FFF3F6F1";
+    const THIN = { style: "thin", color: { argb: "FFD9D9D9" } };
+    const CELL_BORDER = { top: THIN, bottom: THIN, left: THIN, right: THIN };
+
+    // Agrega una fila de título (fusionada) + una subtítulo con el rango de
+    // fechas, y devuelve el número de fila donde queda el encabezado real de
+    // la tabla (para poder aplicarle estilos, autofiltro y freeze panes).
+    function addTitleBlock(sheet, title) {
+      const lastCol = sheet.columns.length;
+      sheet.insertRow(1, [title]);
+      sheet.mergeCells(1, 1, 1, lastCol);
+      const titleRow = sheet.getRow(1);
+      titleRow.height = 26;
+      titleRow.font = { bold: true, size: 14, color: { argb: BRAND_ARGB } };
+      titleRow.alignment = { vertical: "middle" };
+
+      const subtitle = `Del ${from.toLocaleDateString("es-AR")} al ${to.toLocaleDateString("es-AR")}`;
+      sheet.insertRow(2, [subtitle]);
+      sheet.mergeCells(2, 1, 2, lastCol);
+      const subtitleRow = sheet.getRow(2);
+      subtitleRow.font = { italic: true, color: { argb: "FF777777" } };
+
+      const headerRowNumber = 3;
+      const headerRow = sheet.getRow(headerRowNumber);
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_ARGB } };
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+        cell.border = CELL_BORDER;
+      });
+      sheet.views = [{ state: "frozen", ySplit: headerRowNumber }];
+      sheet.autoFilter = {
+        from: { row: headerRowNumber, column: 1 },
+        to: { row: headerRowNumber, column: lastCol },
+      };
+      return headerRowNumber;
+    }
+
+    // Bordea y raya (colores alternados) las filas de datos debajo del
+    // encabezado de una hoja.
+    function styleDataRows(sheet, headerRowNumber) {
+      for (let r = headerRowNumber + 1; r <= sheet.rowCount; r++) {
+        const row = sheet.getRow(r);
+        const stripe = (r - headerRowNumber) % 2 === 0;
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.border = CELL_BORDER;
+          if (stripe) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STRIPE_ARGB } };
+        });
+      }
+    }
+
     const resumen = workbook.addWorksheet("Resumen");
     resumen.columns = [
-      { header: "Concepto", key: "concepto", width: 34 },
-      { header: "Valor", key: "valor", width: 20 },
+      { header: "Concepto", key: "concepto", width: 38 },
+      { header: "Valor", key: "valor", width: 22 },
     ];
     resumen.addRows([
-      { concepto: "Desde", valor: from.toLocaleDateString("es-AR") },
-      { concepto: "Hasta", valor: to.toLocaleDateString("es-AR") },
       { concepto: "Pedidos cerrados", valor: orderRows.length },
       { concepto: "Ventas totales", valor: ventasTotales },
       { concepto: "Descuentos otorgados", valor: descuentosTotales },
       { concepto: "Costo de mercadería vendida (insumos)", valor: cogs },
       { concepto: "Ganancia bruta", valor: gananciaBruta },
     ]);
-    resumen.getRow(1).font = { bold: true };
-    resumen.getColumn("valor").numFmt = "#,##0.00";
+    const resumenHeaderRow = addTitleBlock(resumen, "Cuenta de resultados");
+    resumen.getCell(`B${resumenHeaderRow + 1}`).numFmt = "#,##0"; // pedidos cerrados: entero
+    for (let r = resumenHeaderRow + 2; r <= resumen.rowCount; r++) {
+      resumen.getCell(`B${r}`).numFmt = "#,##0.00";
+    }
+    resumen.getRow(resumenHeaderRow + 5).font = { bold: true }; // ganancia bruta destacada
+    styleDataRows(resumen, resumenHeaderRow);
 
     const porProducto = workbook.addWorksheet("Ventas por producto");
     porProducto.columns = [
@@ -102,8 +168,12 @@ router.get(
     Object.values(productAgg)
       .sort((a, b) => b.revenue - a.revenue)
       .forEach((p) => porProducto.addRow(p));
-    porProducto.getRow(1).font = { bold: true };
-    porProducto.getColumn("revenue").numFmt = "#,##0.00";
+    const porProductoHeaderRow = addTitleBlock(porProducto, "Ventas por producto");
+    for (let r = porProductoHeaderRow + 1; r <= porProducto.rowCount; r++) {
+      porProducto.getCell(`B${r}`).numFmt = "#,##0";
+      porProducto.getCell(`C${r}`).numFmt = "#,##0.00";
+    }
+    styleDataRows(porProducto, porProductoHeaderRow);
 
     const porPago = workbook.addWorksheet("Pagos por medio");
     porPago.columns = [
@@ -111,8 +181,11 @@ router.get(
       { header: "Total cobrado", key: "total", width: 18 },
     ];
     paymentRows.forEach((p) => porPago.addRow({ method: p.method, total: Number(p.total) }));
-    porPago.getRow(1).font = { bold: true };
-    porPago.getColumn("total").numFmt = "#,##0.00";
+    const porPagoHeaderRow = addTitleBlock(porPago, "Pagos por medio");
+    for (let r = porPagoHeaderRow + 1; r <= porPago.rowCount; r++) {
+      porPago.getCell(`B${r}`).numFmt = "#,##0.00";
+    }
+    styleDataRows(porPago, porPagoHeaderRow);
 
     res.setHeader(
       "Content-Type",

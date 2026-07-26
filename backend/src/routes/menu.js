@@ -132,12 +132,13 @@ router.post(
       min: z.number().int().min(0).default(0),
       max: z.number().int().min(0).default(1),
       required: z.boolean().default(false),
+      splitMode: z.boolean().default(false),
       modifiers: z.array(z.object({ name: z.string().min(1), price: z.number().default(0) })).default([]),
     });
-    const { name, min, max, required, modifiers } = schema.parse(req.body);
+    const { name, min, max, required, splitMode, modifiers } = schema.parse(req.body);
     const { rows } = await query(
-      `INSERT INTO modifier_groups (name, min, max, required) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [name, min, max, required]
+      `INSERT INTO modifier_groups (name, min, max, required, split_mode) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [name, min, max, required, splitMode]
     );
     const group = rows[0];
     const createdModifiers = [];

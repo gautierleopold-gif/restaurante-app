@@ -26,9 +26,37 @@ router.get(
   asyncHandler(async (req, res) => {
     const branch = await resolveBranch(req);
     if (!branch) return res.json({ settings: null });
-    // No se devuelve la contraseña de SMTP en texto plano al frontend.
-    const { smtp_pass, ...safe } = branch;
-    res.json({ settings: { ...safe, smtp_pass_set: !!smtp_pass } });
+    // No se devuelven la contraseña de SMTP ni la API key de Resend en
+    // texto plano al frontend, solo si están cargadas o no.
+    const { smtp_pass, resend_api_key, ...safe } = branch;
+    res.json({ settings: { ...safe, smtp_pass_set: !!smtp_pass, resend_api_key_set: !!resend_api_key } });
+  })
+);
+
+// Datos de la sucursal necesarios para imprimir tickets/comandas (nombre,
+// dirección, IVA, etc.): cualquier usuario autenticado puede leerlos (un
+// mozo o cajero también necesita imprimir), a diferencia de "/" que expone
+// además la config de SMTP y requiere el permiso más restrictivo de
+// administración de parámetros.
+router.get(
+  "/public",
+  asyncHandler(async (req, res) => {
+    const branch = await resolveBranch(req);
+    if (!branch) return res.json({ branch: null });
+    res.json({
+      branch: {
+        name: branch.name,
+        legalName: branch.legal_name,
+        taxId: branch.tax_id,
+        address: branch.address,
+        fiscalAddress: branch.fiscal_address,
+        phone: branch.phone,
+        currency: branch.currency,
+        taxRate: branch.tax_rate != null ? Number(branch.tax_rate) : 0,
+        taxMode: branch.tax_mode || "NONE",
+        taxLabel: branch.tax_label || "IVA",
+      },
+    });
   })
 );
 
@@ -46,6 +74,10 @@ const settingsSchema = z.object({
   smtpUser: z.string().optional().nullable(),
   smtpPass: z.string().optional().nullable(),
   smtpFrom: z.string().optional().nullable(),
+  resendApiKey: z.string().optional().nullable(),
+  taxRate: z.number().min(0).max(100).optional(),
+  taxMode: z.enum(["NONE", "INCLUSIVE", "ADDITIVE"]).optional(),
+  taxLabel: z.string().min(1).optional(),
 });
 
 router.patch(
@@ -74,13 +106,18 @@ router.patch(
       smtpPort: "smtp_port",
       smtpUser: "smtp_user",
       smtpFrom: "smtp_from",
+      taxRate: "tax_rate",
+      taxMode: "tax_mode",
+      taxLabel: "tax_label",
     };
-    // smtpPass se maneja aparte: solo se actualiza si vino un valor no vacío,
-    // para no pisarlo con "" cuando el formulario lo deja en blanco a
-    // propósito (no se re-muestra la contraseña guardada al frontend).
+    // smtpPass y resendApiKey se manejan aparte: solo se actualizan si vino
+    // un valor no vacío, para no pisarlos con "" cuando el formulario los
+    // deja en blanco a propósito (no se re-muestran al frontend).
     const fields = { ...data };
     const smtpPass = fields.smtpPass;
+    const resendApiKey = fields.resendApiKey;
     delete fields.smtpPass;
+    delete fields.resendApiKey;
 
     const keys = Object.keys(fields).filter((k) => colMap[k]);
     const setParts = keys.map((k, i) => `${colMap[k]} = $${i + 1}`);
@@ -88,6 +125,10 @@ router.patch(
     if (smtpPass) {
       setParts.push(`smtp_pass = $${values.length + 1}`);
       values.push(smtpPass);
+    }
+    if (resendApiKey) {
+      setParts.push(`resend_api_key = $${values.length + 1}`);
+      values.push(resendApiKey);
     }
     if (setParts.length === 0) return res.status(400).json({ error: "Nada para actualizar." });
     values.push(branch.id);
@@ -102,11 +143,15 @@ router.patch(
       action: "SETTINGS_UPDATED",
       entity: "Branch",
       entityId: branch.id,
-      details: { ...fields, smtpPass: smtpPass ? "(actualizada)" : undefined },
+      details: {
+        ...fields,
+        smtpPass: smtpPass ? "(actualizada)" : undefined,
+        resendApiKey: resendApiKey ? "(actualizada)" : undefined,
+      },
     });
 
-    const { smtp_pass, ...safe } = rows[0];
-    res.json({ settings: { ...safe, smtp_pass_set: !!smtp_pass } });
+    const { smtp_pass, resend_api_key, ...safe } = rows[0];
+    res.json({ settings: { ...safe, smtp_pass_set: !!smtp_pass, resend_api_key_set: !!resend_api_key } });
   })
 );
 
