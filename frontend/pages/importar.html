@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Importar menú - Gestión Restaurante</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .import-step { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .import-step .badge-step {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 50%; background: var(--primary);
+      color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0;
+    }
+    .mapping-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    .mapping-table th, .mapping-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border, #e5e0d8); font-size: 14px; }
+    .mapping-table select { width: 100%; }
+    .required-field::after { content: " *"; color: #b03a2e; }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    .preview-table th, .preview-table td { padding: 4px 6px; border: 1px solid var(--border, #e5e0d8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+    .section-disabled { opacity: 0.5; pointer-events: none; }
+    .summary-box { background: var(--bg-soft, #f3f0ea); border-radius: 8px; padding: 12px 16px; margin-top: 12px; }
+    .row-errors { max-height: 180px; overflow-y: auto; font-size: 13px; margin-top: 8px; }
+    .row-errors li { color: #b03a2e; }
+    .sheet-picker { margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <div id="app-nav"></div>
+  <div class="container">
+    <h2 class="mb16">Importar menú (Fudo u otro sistema)</h2>
+
+    <div class="card mb16">
+      <p class="small muted">
+        Subí el archivo Excel (.xlsx) o CSV que exportaste de Fudo o de cualquier otro sistema de gestión.
+        La app va a proponer automáticamente a qué campo corresponde cada columna de tu archivo (podés corregirlo
+        antes de importar). No hace falta que el archivo tenga un formato exacto: vos elegís las columnas.
+      </p>
+      <div class="field">
+        <label>Archivo (.xlsx o .csv)</label>
+        <input type="file" id="file-input" accept=".xlsx,.csv" />
+      </div>
+      <div id="upload-status" class="small muted"></div>
+    </div>
+
+    <div id="sections" class="section-disabled">
+      <!-- 1. Categorías y productos -->
+      <div class="card mb16">
+        <div class="import-step"><span class="badge-step">1</span><h3 style="margin:0">Categorías y productos</h3></div>
+        <p class="small muted">Obligatorio. Crea las categorías que falten y los productos con su precio. Si un producto ya existe (misma categoría y nombre), se actualiza en vez de duplicarse.</p>
+        <div class="sheet-picker">
+          <label class="small muted">Hoja del archivo</label>
+          <select id="productos-sheet"></select>
+        </div>
+        <table class="mapping-table" id="productos-mapping"></table>
+        <div class="small muted">Vista previa (primeras filas mapeadas):</div>
+        <div style="overflow-x:auto"><table class="preview-table" id="productos-preview"></table></div>
+        <button class="btn btn-primary mt16" id="productos-commit">Importar productos y categorías</button>
+        <div id="productos-summary"></div>
+      </div>
+
+      <!-- 2. Variantes -->
+      <div class="card mb16">
+        <div class="import-step"><span class="badge-step">2</span><h3 style="margin:0">Variantes (opcional)</h3></div>
+        <p class="small muted">Para productos con tamaños/variantes con precio propio (ej. "Chico"/"Grande"). El producto tiene que existir ya (importalo en el paso 1 primero).</p>
+        <div class="sheet-picker">
+          <label class="small muted">Hoja del archivo</label>
+          <select id="variantes-sheet"></select>
+        </div>
+        <table class="mapping-table" id="variantes-mapping"></table>
+        <div class="small muted">Vista previa:</div>
+        <div style="overflow-x:auto"><table class="preview-table" id="variantes-preview"></table></div>
+        <button class="btn btn-primary mt16" id="variantes-commit">Importar variantes</button>
+        <div id="variantes-summary"></div>
+      </div>
+
+      <!-- 3. Adicionales / grupos modificadores -->
+      <div class="card mb16">
+        <div class="import-step"><span class="badge-step">3</span><h3 style="margin:0">Grupos de adicionales (opcional)</h3></div>
+        <p class="small muted">
+          Una fila por opción dentro de un grupo (ej. sabores, extras). Si varios productos comparten el grupo, separalos
+          con coma en "Producto(s) asociado(s)". Los productos asociados tienen que existir ya (paso 1).
+        </p>
+        <div class="sheet-picker">
+          <label class="small muted">Hoja del archivo</label>
+          <select id="adicionales-sheet"></select>
+        </div>
+        <table class="mapping-table" id="adicionales-mapping"></table>
+        <div class="small muted">Vista previa:</div>
+        <div style="overflow-x:auto"><table class="preview-table" id="adicionales-preview"></table></div>
+        <button class="btn btn-primary mt16" id="adicionales-commit">Importar grupos de adicionales</button>
+        <div id="adicionales-summary"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO"]);
+    if (user) {
+      renderNav();
+
+      let importToken = null;
+      let sheets = [];
+      let suggestedMappings = null;
+      let fieldDefs = null;
+
+      const SECTIONS = {
+        productos: { key: "productos", endpoint: "/import/products/commit", requiredFields: ["categoria", "nombre", "precio"] },
+        variantes: { key: "variantes", endpoint: "/import/variants/commit", requiredFields: ["producto", "variante", "precio"] },
+        adicionales: { key: "adicionales", endpoint: "/import/modifiers/commit", requiredFields: ["grupo", "opcion"] },
+      };
+
+      function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function populateSheetSelect(selectEl) {
+        selectEl.innerHTML = sheets
+          .map((s, i) => `<option value="${i}">${s.name} (${s.rowCount} filas)</option>`)
+          .join("");
+      }
+
+      function renderMappingTable(sectionKey, sheetIndex) {
+        const table = document.getElementById(`${sectionKey}-mapping`);
+        const defs = fieldDefs[sectionKey];
+        const guess = suggestedMappings[sectionKey][sheetIndex] || {};
+        const headers = sheets[sheetIndex].headers;
+
+        table.innerHTML = `
+          <thead><tr><th>Campo de la app</th><th>Columna de tu archivo</th></tr></thead>
+          <tbody>
+            ${defs
+              .map(
+                (f) => `
+              <tr>
+                <td class="${f.required ? "required-field" : ""}">${f.label}</td>
+                <td>
+                  <select data-field="${f.key}" data-section="${sectionKey}" class="map-select">
+                    <option value="">(no usar)</option>
+                    ${headers
+                      .map(
+                        (h) => `<option value="${h}" ${guess[f.key] === h ? "selected" : ""}>${h}</option>`
+                      )
+                      .join("")}
+                  </select>
+                </td>
+              </tr>`
+              )
+              .join("")}
+          </tbody>
+        `;
+        table.querySelectorAll(".map-select").forEach((sel) => {
+          sel.addEventListener("change", () => renderPreview(sectionKey, sheetIndex));
+        });
+        renderPreview(sectionKey, sheetIndex);
+      }
+
+      function currentMapping(sectionKey) {
+        const mapping = {};
+        document
+          .querySelectorAll(`#${sectionKey}-mapping .map-select`)
+          .forEach((sel) => {
+            mapping[sel.dataset.field] = sel.value || null;
+          });
+        return mapping;
+      }
+
+      function renderPreview(sectionKey, sheetIndex) {
+        const mapping = currentMapping(sectionKey);
+        const defs = fieldDefs[sectionKey];
+        const rows = sheets[sheetIndex].preview.slice(0, 6);
+        const previewEl = document.getElementById(`${sectionKey}-preview`);
+        const cols = defs.filter((f) => mapping[f.key]);
+        previewEl.innerHTML = `
+          <thead><tr>${cols.map((f) => `<th>${f.label}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows
+              .map(
+                (r) => `<tr>${cols.map((f) => `<td>${r[mapping[f.key]] ?? ""}</td>`).join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        `;
+      }
+
+      function setupSection(sectionKey) {
+        // Si el usuario sube más de un archivo en la misma visita, se vuelve a
+        // llamar a esta función: clonamos los elementos con listeners para no
+        // ir acumulando handlers duplicados (que dispararían el import 2+ veces).
+        const oldSheetSelect = document.getElementById(`${sectionKey}-sheet`);
+        const sheetSelect = oldSheetSelect.cloneNode(true);
+        oldSheetSelect.replaceWith(sheetSelect);
+        populateSheetSelect(sheetSelect);
+        renderMappingTable(sectionKey, 0);
+        sheetSelect.addEventListener("change", () => {
+          renderMappingTable(sectionKey, Number(sheetSelect.value));
+        });
+
+        const oldCommitBtn = document.getElementById(`${sectionKey}-commit`);
+        const commitBtn = oldCommitBtn.cloneNode(true);
+        oldCommitBtn.replaceWith(commitBtn);
+        commitBtn.addEventListener("click", async () => {
+          const sheetIndex = Number(sheetSelect.value || 0);
+          const mapping = currentMapping(sectionKey);
+          const section = SECTIONS[sectionKey];
+          const missing = section.requiredFields.filter((f) => !mapping[f]);
+          if (missing.length > 0) {
+            toast(`Faltan mapear campos obligatorios: ${missing.join(", ")}.`, "error");
+            return;
+          }
+          const summaryEl = document.getElementById(`${sectionKey}-summary`);
+          summaryEl.innerHTML = `<p class="small muted">Importando...</p>`;
+          try {
+            const { summary } = await api(section.endpoint, {
+              method: "POST",
+              body: { importToken, sheetIndex, mapping },
+            });
+            summaryEl.innerHTML = renderSummary(sectionKey, summary);
+            toast("Importación completada.", "success");
+          } catch (err) {
+            summaryEl.innerHTML = `<p class="small muted">Error: ${err.message}</p>`;
+            toast(err.message, "error");
+          }
+        });
+      }
+
+      function renderSummary(sectionKey, s) {
+        let lines = [];
+        if (sectionKey === "productos") {
+          lines = [
+            `Categorías nuevas: <strong>${s.categoriesCreated}</strong>`,
+            `Categorías reutilizadas: <strong>${s.categoriesReused}</strong>`,
+            `Productos creados: <strong>${s.productsCreated}</strong>`,
+            `Productos actualizados: <strong>${s.productsUpdated}</strong>`,
+          ];
+        } else if (sectionKey === "variantes") {
+          lines = [
+            `Variantes creadas: <strong>${s.variantsCreated}</strong>`,
+            `Variantes actualizadas: <strong>${s.variantsUpdated}</strong>`,
+          ];
+        } else {
+          lines = [
+            `Grupos nuevos: <strong>${s.groupsCreated}</strong>`,
+            `Grupos reutilizados: <strong>${s.groupsReused}</strong>`,
+            `Opciones creadas: <strong>${s.optionsCreated}</strong>`,
+            `Opciones actualizadas: <strong>${s.optionsUpdated}</strong>`,
+            `Asociaciones a productos: <strong>${s.associationsCreated}</strong>`,
+          ];
+        }
+        const errorsHtml =
+          s.rowErrors && s.rowErrors.length
+            ? `<div class="row-errors"><strong>${s.rowErrors.length} fila(s) con problemas:</strong><ul>${s.rowErrors
+                .map((e) => `<li>Fila ${e.row}: ${e.error}</li>`)
+                .join("")}</ul></div>`
+            : `<p class="small muted mt16">Sin errores. ${s.totalRows} fila(s) procesadas.</p>`;
+        return `<div class="summary-box"><div>${lines.join("<br />")}</div>${errorsHtml}</div>`;
+      }
+
+      document.getElementById("file-input").addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const statusEl = document.getElementById("upload-status");
+        statusEl.textContent = "Leyendo archivo...";
+        try {
+          const fileBase64 = await fileToBase64(file);
+          const data = await api("/import/parse", {
+            method: "POST",
+            body: { fileBase64, fileName: file.name },
+          });
+          importToken = data.importToken;
+          sheets = data.sheets;
+          suggestedMappings = data.suggestedMappings;
+          fieldDefs = data.fieldDefs;
+
+          statusEl.textContent = `Archivo leído: ${sheets.length} hoja(s), ${sheets
+            .map((s) => s.rowCount)
+            .reduce((a, b) => a + b, 0)} fila(s) en total.`;
+
+          document.getElementById("sections").classList.remove("section-disabled");
+          setupSection("productos");
+          setupSection("variantes");
+          setupSection("adicionales");
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+          toast(err.message, "error");
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -226,7 +226,7 @@
     function renderProductos() {
       return `
         <div class="card mb16">
-          <div class="flex-between mb8"><h3 style="margin:0">Productos</h3><button class="btn btn-primary btn-sm" id="add-product">+ Nuevo producto</button></div>
+          <div class="flex-between mb8"><h3 style="margin:0">Productos</h3><div class="flex-gap"><a class="btn btn-sm" href="/pages/importar.html">⬆ Importar desde Excel/Fudo</a><button class="btn btn-primary btn-sm" id="add-product">+ Nuevo producto</button></div></div>
           <table><thead><tr><th>Nombre</th><th>Categoría</th><th>Estación</th><th>Precio base</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             ${products.map(p => `<tr>

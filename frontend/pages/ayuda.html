@@ -31,6 +31,7 @@
       <div class="novedad-item"><strong>Facturar directo desde la lista de pedidos:</strong> ya no hace falta entrar al detalle de un pedido cerrado para facturarlo; hay un botón "Facturar" / "PDF" directo en la lista de Pedidos.</div>
       <div class="novedad-item"><strong>Impresión de tickets:</strong> botón "Imprimir ticket" (vía el navegador) y "Descargar ticket (.txt)" en cada pedido, listo para una impresora de tickets térmica.</div>
       <div class="novedad-item"><strong>Envío de facturas por mail sin SMTP:</strong> ahora se puede configurar una API key de Resend como alternativa al SMTP tradicional (necesario si la app corre en el plan gratuito de Render, que bloquea SMTP desde septiembre de 2025).</div>
+      <div class="novedad-item"><strong>Importar menú desde Fudo u otro sistema:</strong> en Administración → Productos → "Importar desde Excel/Fudo" podés subir un Excel/CSV con tus categorías, productos, variantes y grupos de adicionales, mapear las columnas a mano (con sugerencia automática) y traerlos de una sola vez en vez de cargarlos producto por producto.</div>
     </div>
 
     <div class="card">
@@ -87,6 +88,11 @@
           <li><strong>Salón y mesas:</strong> crear salones y mesas, y organizarlas arrastrándolas en el plano.</li>
           <li><strong>Inventario:</strong> insumos con stock y costo por unidad; al vender un producto con receta cargada, se descuenta el stock automáticamente y queda un historial de movimientos.</li>
         </ul>
+      </details>
+
+      <details class="help-section">
+        <summary>Administración → Importar menú desde Excel/Fudo</summary>
+        <p>Desde Productos → "Importar desde Excel/Fudo" podés subir un archivo .xlsx o .csv exportado de Fudo o de cualquier otro sistema. La app lee las hojas del archivo y sugiere automáticamente a qué campo corresponde cada columna (nombre, categoría, precio, etc.), pero siempre podés corregir el mapeo antes de importar. Hay tres pasos independientes: (1) categorías y productos (obligatorio primero), (2) variantes de un producto ya importado, y (3) grupos de adicionales (una fila por opción; si varios productos comparten el grupo, se listan separados por coma). Si un producto ya existe (misma categoría y nombre) se actualiza en vez de duplicarse, así que importar el mismo archivo dos veces no genera productos repetidos. Al final de cada paso se muestra un resumen con lo creado/actualizado y el detalle de cualquier fila con error (por ejemplo, un producto asociado que todavía no se importó).</p>
       </details>
 
       <details class="help-section">
