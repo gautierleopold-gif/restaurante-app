@@ -18,6 +18,7 @@ const auditRoutes = require("./routes/audit");
 const cashClosureRoutes = require("./routes/cashClosures");
 const invoiceTemplateRoutes = require("./routes/invoiceTemplates");
 const freeInvoiceRoutes = require("./routes/freeInvoices");
+const importMenuRoutes = require("./routes/importMenu");
 const { pool } = require("./db/pool");
 const { loadOverrides } = require("./lib/permissions");
 
@@ -32,7 +33,10 @@ const io = new Server(server, {
 app.set("io", io);
 
 app.use(cors({ origin: corsOrigin }));
-app.use(express.json());
+// Límite ampliado (por defecto son 100kb): hace falta para poder recibir
+// archivos de Excel/CSV codificados en base64 (importador de menú) y logos de
+// plantillas de factura dentro del cuerpo JSON.
+app.use(express.json({ limit: "20mb" }));
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "restaurante-backend", time: new Date().toISOString() });
@@ -51,6 +55,7 @@ app.use("/api/audit", auditRoutes);
 app.use("/api/cash-closures", cashClosureRoutes);
 app.use("/api/invoice-templates", invoiceTemplateRoutes);
 app.use("/api/free-invoices", freeInvoiceRoutes);
+app.use("/api/import", importMenuRoutes);
 
 io.on("connection", (socket) => {
   socket.on("disconnect", () => {});
