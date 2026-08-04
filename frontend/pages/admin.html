@@ -981,9 +981,16 @@
         try {
           const language = document.getElementById("set-language").value;
           await apiWithOverride("/settings", { method: "PATCH", body: { language } }, "settings:manage");
-          setLang(language); // aplica de inmediato, sin esperar la próxima carga de página
+          setLang(language); // cachea el idioma nuevo para que la recarga ya no tenga que ir a buscarlo
+          location.hash = "parametros"; // al recargar, volver a esta misma pestaña
           toast("Idioma actualizado.", "success");
-          await refresh();
+          // Recargamos toda la página: además de los textos con data-i18n, hay
+          // contenido armado en JS al cargar (la barra de navegación, la
+          // etiqueta del rol, las pestañas ya abiertas) que no se vuelve a
+          // generar solo. Recargar es la forma más simple de garantizar que
+          // *todo* quede en el idioma nuevo de una, sin tener que cazar cada
+          // rincón de la interfaz a mano.
+          setTimeout(() => location.reload(), 600);
         } catch (err) { toast(err.message, "error"); }
       }
       document.getElementById("save-settings-1").addEventListener("click", saveBusinessData);
@@ -1187,11 +1194,17 @@
       plantillas: { render: renderPlantillas, wire: wirePlantillas },
       auditoria: { render: renderAuditoria, wire: wireAuditoria },
     };
-    let activeTab = "productos";
+    // Si venimos de un F5/recarga (por ejemplo, al guardar el idioma) y la
+    // URL trae #pestaña, arrancamos en esa pestaña en vez de siempre en
+    // Productos, para no perder de vista dónde estaba el usuario.
+    const initialTabFromHash = location.hash.replace("#", "");
+    let activeTab = TABS[initialTabFromHash] ? initialTabFromHash : "productos";
 
     function renderActiveTab() {
+      document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === activeTab));
       document.getElementById("tab-content").innerHTML = TABS[activeTab].render();
       TABS[activeTab].wire();
+      history.replaceState(null, "", `#${activeTab}`);
     }
 
     async function refresh() {
@@ -1202,8 +1215,6 @@
     document.getElementById("tabs").addEventListener("click", (e) => {
       if (e.target.tagName !== "BUTTON") return;
       if (["usuarios", "permisos", "parametros", "auditoria"].includes(e.target.dataset.tab) && !canManageUsers) return;
-      document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("active"));
-      e.target.classList.add("active");
       activeTab = e.target.dataset.tab;
       renderActiveTab();
     });
