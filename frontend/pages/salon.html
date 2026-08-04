@@ -54,29 +54,31 @@
     }
 
     function statusLabel(s) {
-      return { LIBRE: "Libre", OCUPADA: "Ocupada", RESERVADA: "Reservada", PENDIENTE_PAGO: "Pend. pago" }[s] || s;
+      const fallback = { LIBRE: "Libre", OCUPADA: "Ocupada", RESERVADA: "Reservada", PENDIENTE_PAGO: "Pend. pago" }[s] || s;
+      return t(`status.${s}`, fallback);
     }
 
     function renderFloor() {
       const room = rooms.find((r) => r.id === activeRoomId);
       const floor = document.getElementById("floor");
       if (!room || room.tables.length === 0) {
-        floor.innerHTML = `<div class="empty-state">No hay mesas configuradas en este salón todavía. Podés crearlas desde Administración → Salón y mesas.</div>`;
+        floor.innerHTML = `<div class="empty-state">${t("salon.noTables")}</div>`;
         return;
       }
       // pos_x/pos_y son coordenadas libres en píxeles dentro del plano (se
       // editan arrastrando las mesas con el mouse desde Administración →
       // Salón y mesas), no una grilla de celdas.
+      const persLabel = t("common.pers");
       floor.innerHTML = room.tables
-        .map((t) => {
-          const left = t.pos_x;
-          const top = t.pos_y;
-          const shapeClass = t.shape === "CIRCLE" ? "shape-circle" : "";
+        .map((table) => {
+          const left = table.pos_x;
+          const top = table.pos_y;
+          const shapeClass = table.shape === "CIRCLE" ? "shape-circle" : "";
           return `
-          <div class="table-tile ${t.status.toLowerCase()} ${shapeClass}" style="left:${left}px; top:${top}px; width:${t.width || 108}px; height:${t.height || 88}px" data-table="${t.id}">
-            <div class="t-name">${t.name}</div>
-            <div class="t-cap">${t.capacity} pers.</div>
-            <span class="pill pill-${t.status.toLowerCase()}">${statusLabel(t.status)}</span>
+          <div class="table-tile ${table.status.toLowerCase()} ${shapeClass}" style="left:${left}px; top:${top}px; width:${table.width || 108}px; height:${table.height || 88}px" data-table="${table.id}">
+            <div class="t-name">${table.name}</div>
+            <div class="t-cap">${table.capacity} ${persLabel}</div>
+            <span class="pill pill-${table.status.toLowerCase()}">${statusLabel(table.status)}</span>
           </div>`;
         })
         .join("");
@@ -92,10 +94,10 @@
       if (table.status === "LIBRE") {
         const overlay = showModal(`
           <h2>${table.name}</h2>
-          <p class="muted">Mesa libre. ¿Qué querés hacer?</p>
+          <p class="muted">${t("salon.freeTableTitle")}</p>
           <div class="flex-gap" style="flex-wrap:wrap">
-            <button class="btn btn-primary" id="open-order">Abrir pedido</button>
-            <button class="btn" id="mark-reserved">Marcar reservada</button>
+            <button class="btn btn-primary" id="open-order">${t("salon.openOrder")}</button>
+            <button class="btn" id="mark-reserved">${t("salon.markReserved")}</button>
           </div>
         `);
         overlay.querySelector("#open-order").addEventListener("click", () => {
@@ -112,10 +114,10 @@
       if (table.status === "RESERVADA") {
         const overlay = showModal(`
           <h2>${table.name}</h2>
-          <p class="muted">Mesa reservada.</p>
+          <p class="muted">${t("salon.reservedText")}</p>
           <div class="flex-gap">
-            <button class="btn btn-primary" id="open-order">Abrir pedido</button>
-            <button class="btn" id="free-table">Liberar mesa</button>
+            <button class="btn btn-primary" id="open-order">${t("salon.openOrder")}</button>
+            <button class="btn" id="free-table">${t("salon.freeTable")}</button>
           </div>
         `);
         overlay.querySelector("#open-order").addEventListener("click", () => {
@@ -131,17 +133,17 @@
 
       // OCUPADA o PENDIENTE_PAGO: mostrar resumen del pedido abierto
       if (!table.open_order_id) {
-        toast("Esta mesa figura ocupada pero no tiene un pedido asociado. Revisala desde Administración.", "error");
+        toast(t("salon.tableOccupiedNoOrder"), "error");
         return;
       }
       const { order } = await api(`/orders/${table.open_order_id}`);
       const overlay = showModal(`
         <h2>${table.name} · Pedido #${order.code}</h2>
-        <p class="muted small">Mozo: ${order.waiter_name || "-"}</p>
+        <p class="muted small">${t("salon.waiter")}: ${order.waiter_name || "-"}</p>
         <div style="max-height:220px;overflow-y:auto" class="mb16">
           ${
             order.items.length === 0
-              ? `<p class="muted small">Sin productos todavía.</p>`
+              ? `<p class="muted small">${t("salon.noProductsYet")}</p>`
               : order.items
                   .filter((i) => !i.canceled)
                   .map(
@@ -150,10 +152,10 @@
                   .join("")
           }
         </div>
-        <div class="ticket-total-row grand"><span>Total</span><span>$${money(order.total)}</span></div>
+        <div class="ticket-total-row grand"><span>${t("common.total")}</span><span>$${money(order.total)}</span></div>
         <div class="flex-gap mt16" style="flex-wrap:wrap">
-          <a class="btn btn-primary" href="/pages/pos.html?orderId=${order.id}">Ver / editar pedido</a>
-          <a class="btn btn-accent" href="/pages/pos.html?orderId=${order.id}&pay=1">Cobrar</a>
+          <a class="btn btn-primary" href="/pages/pos.html?orderId=${order.id}">${t("salon.viewEditOrder")}</a>
+          <a class="btn btn-accent" href="/pages/pos.html?orderId=${order.id}&pay=1">${t("page.pos.pay")}</a>
         </div>
       `);
     }

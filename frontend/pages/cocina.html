@@ -11,7 +11,7 @@
   <div class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="page.cocina.title">Comandas</h2>
-      <label class="flex-gap small"><input type="checkbox" id="autorefresh" checked style="width:auto" /> Actualización automática</label>
+      <label class="flex-gap small"><input type="checkbox" id="autorefresh" checked style="width:auto" /> <span data-i18n="cocina.autoRefresh">Actualización automática</span></label>
     </div>
     <div class="kds-board" id="kds-board"></div>
   </div>
@@ -38,7 +38,9 @@
       return null;
     }
     function nextLabel(status) {
-      return { PENDIENTE: "Iniciar preparación", EN_PREPARACION: "Marcar listo", LISTO: "Marcar entregado" }[status];
+      const fallback = { PENDIENTE: "Iniciar preparación", EN_PREPARACION: "Marcar listo", LISTO: "Marcar entregado" }[status];
+      const key = { PENDIENTE: "cocina.startPrep", EN_PREPARACION: "cocina.markReady", LISTO: "cocina.markDelivered" }[status];
+      return key ? t(key, fallback) : fallback;
     }
 
     async function load() {
@@ -53,7 +55,7 @@
       const board = document.getElementById("kds-board");
       const stationNames = Object.keys(stations).sort();
       if (stationNames.length === 0) {
-        board.innerHTML = `<div class="empty-state">No hay comandas pendientes. 🎉</div>`;
+        board.innerHTML = `<div class="empty-state">${t("cocina.noItems")} 🎉</div>`;
         return;
       }
       board.innerHTML = stationNames
