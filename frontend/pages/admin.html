@@ -9,25 +9,26 @@
 <body>
   <div id="app-nav"></div>
   <div class="container">
-    <h2 class="mb16">Administración</h2>
+    <h2 class="mb16" data-i18n="page.admin.title">Administración</h2>
     <div class="tabs" id="tabs">
-      <button data-tab="productos" class="active">Productos</button>
-      <button data-tab="categorias">Categorías</button>
-      <button data-tab="adicionales">Adicionales</button>
-      <button data-tab="estaciones">Estaciones de cocina</button>
-      <button data-tab="salon">Salón y mesas</button>
-      <button data-tab="inventario">Inventario</button>
-      <button data-tab="reportes">Reportes</button>
-      <button data-tab="usuarios" id="tab-usuarios" style="display:none">Usuarios</button>
-      <button data-tab="permisos" id="tab-permisos" style="display:none">Permisos</button>
-      <button data-tab="parametros" id="tab-parametros" style="display:none">Parámetros</button>
-      <button data-tab="plantillas" id="tab-plantillas" style="display:none">Plantillas de factura</button>
-      <button data-tab="auditoria" id="tab-auditoria" style="display:none">Auditoría</button>
+      <button data-tab="productos" class="active" data-i18n="tab.productos">Productos</button>
+      <button data-tab="categorias" data-i18n="tab.categorias">Categorías</button>
+      <button data-tab="adicionales" data-i18n="tab.adicionales">Adicionales</button>
+      <button data-tab="estaciones" data-i18n="tab.estaciones">Estaciones de cocina</button>
+      <button data-tab="salon" data-i18n="tab.salon">Salón y mesas</button>
+      <button data-tab="inventario" data-i18n="tab.inventario">Inventario</button>
+      <button data-tab="reportes" data-i18n="tab.reportes">Reportes</button>
+      <button data-tab="usuarios" id="tab-usuarios" style="display:none" data-i18n="tab.usuarios">Usuarios</button>
+      <button data-tab="permisos" id="tab-permisos" style="display:none" data-i18n="tab.permisos">Permisos</button>
+      <button data-tab="parametros" id="tab-parametros" style="display:none" data-i18n="tab.parametros">Parámetros</button>
+      <button data-tab="plantillas" id="tab-plantillas" style="display:none" data-i18n="tab.plantillas">Plantillas de factura</button>
+      <button data-tab="auditoria" id="tab-auditoria" style="display:none" data-i18n="tab.auditoria">Auditoría</button>
     </div>
     <div id="tab-content"></div>
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO"]);
@@ -230,7 +231,7 @@
           <table><thead><tr><th>Nombre</th><th>Categoría</th><th>Estación</th><th>Precio base</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             ${products.map(p => `<tr>
-              <td>${p.name}</td><td>${p.category_name}</td><td>${p.station_name || "-"}</td><td>$${money(p.base_price)}</td>
+              <td>${p.name}</td><td>${p.category_name || '<span class="muted small">(sin categoría — no aparece en la carta)</span>'}</td><td>${p.station_name || "-"}</td><td>$${money(p.base_price)}</td>
               <td><span class="pill pill-${p.active ? "libre" : "pendiente_pago"}">${p.active ? "Activo" : "Inactivo"}</span></td>
               <td class="flex-gap">
                 <button class="btn btn-sm" data-edit-product="${p.id}">Editar</button>
@@ -247,7 +248,7 @@
           <div class="field"><label>Nombre</label><input id="prod-name" /></div>
           <div class="field"><label>Descripción</label><input id="prod-desc" /></div>
           <div class="grid grid-2">
-            <div class="field"><label>Categoría</label><select id="prod-cat">${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}</select></div>
+            <div class="field"><label>Categoría</label><select id="prod-cat"><option value="">(sin categoría — no aparece en la carta)</option>${categories.map(c => `<option value="${c.id}">${c.name}</option>`).join("")}</select></div>
             <div class="field"><label>Estación</label><select id="prod-station"><option value="">(ninguna)</option>${stations.map(s => `<option value="${s.id}">${s.name}</option>`).join("")}</select></div>
           </div>
           <div class="field"><label>Precio base</label><input id="prod-price" type="number" step="0.01" /></div>
@@ -264,7 +265,7 @@
             await apiWithOverride("/menu/products", { method: "POST", body: {
               name: overlay.querySelector("#prod-name").value,
               description: overlay.querySelector("#prod-desc").value || null,
-              categoryId: overlay.querySelector("#prod-cat").value,
+              categoryId: overlay.querySelector("#prod-cat").value || null,
               stationId: overlay.querySelector("#prod-station").value || null,
               basePrice: Number(overlay.querySelector("#prod-price").value),
               variants, modifierGroupIds,
@@ -293,7 +294,7 @@
         <div class="field"><label>Nombre</label><input id="ep-name" value="${(p.name || "").replace(/"/g, "&quot;")}" /></div>
         <div class="field"><label>Descripción</label><input id="ep-desc" value="${(p.description || "").replace(/"/g, "&quot;")}" /></div>
         <div class="grid grid-2">
-          <div class="field"><label>Categoría</label><select id="ep-cat">${categories.map(c => `<option value="${c.id}" ${c.id === p.category_id ? "selected" : ""}>${c.name}</option>`).join("")}</select></div>
+          <div class="field"><label>Categoría</label><select id="ep-cat"><option value="" ${!p.category_id ? "selected" : ""}>(sin categoría — no aparece en la carta)</option>${categories.map(c => `<option value="${c.id}" ${c.id === p.category_id ? "selected" : ""}>${c.name}</option>`).join("")}</select></div>
           <div class="field"><label>Estación</label><select id="ep-station"><option value="">(ninguna)</option>${stations.map(s => `<option value="${s.id}" ${s.id === p.station_id ? "selected" : ""}>${s.name}</option>`).join("")}</select></div>
         </div>
         <div class="field"><label>Precio base</label><input id="ep-price" type="number" step="0.01" value="${p.base_price}" /></div>
@@ -305,7 +306,7 @@
           await apiWithOverride(`/menu/products/${productId}`, { method: "PATCH", body: {
             name: overlay.querySelector("#ep-name").value,
             description: overlay.querySelector("#ep-desc").value || null,
-            categoryId: overlay.querySelector("#ep-cat").value,
+            categoryId: overlay.querySelector("#ep-cat").value || null,
             stationId: overlay.querySelector("#ep-station").value || null,
             basePrice: Number(overlay.querySelector("#ep-price").value),
             imageUrl: overlay.querySelector("#ep-image").value || null,
@@ -371,10 +372,17 @@
     // ---------------------------------------------------------------------
     // Salón y mesas
     // ---------------------------------------------------------------------
+    let selectedTables = new Set();
     function renderSalon() {
+      selectedTables = new Set();
       return `
         <div class="flex-between mb8"><h3 style="margin:0">Salones</h3><button class="btn btn-primary btn-sm" id="add-room">+ Nuevo salón</button></div>
-        <p class="small muted">Arrastrá las mesas con el mouse para acomodarlas como quieras; la posición se guarda sola al soltarlas.</p>
+        <p class="small muted">Arrastrá las mesas para acomodarlas, arrastrá la esquina inferior derecha para cambiar el tamaño. Ctrl/Cmd+click (o Shift+click) para seleccionar varias mesas a la vez.</p>
+        <div class="bulk-toolbar" id="bulk-toolbar" style="display:none">
+          <span id="bulk-count"></span>
+          <button class="btn btn-sm btn-danger" id="bulk-delete-btn">Eliminar seleccionadas</button>
+          <button class="btn btn-sm" id="bulk-clear-btn">Cancelar selección</button>
+        </div>
         ${rooms.map(r => `
           <div class="card mb16">
             <div class="flex-between mb8">
@@ -387,15 +395,31 @@
             </div>
             <div class="salon-editor" data-room-canvas="${r.id}">
               ${r.tables.length === 0 ? `<div class="empty-state">Sin mesas todavía.</div>` : r.tables.map(t => `
-                <div class="table-tile editable-table" style="left:${t.pos_x}px; top:${t.pos_y}px" data-table="${t.id}" data-pos-x="${t.pos_x}" data-pos-y="${t.pos_y}">
-                  <div class="t-name">${t.name}</div>
+                <div class="table-tile editable-table ${t.shape === "CIRCLE" ? "shape-circle" : ""}" style="left:${t.pos_x}px; top:${t.pos_y}px; width:${t.width}px; height:${t.height}px" data-table="${t.id}" data-pos-x="${t.pos_x}" data-pos-y="${t.pos_y}" data-width="${t.width}" data-height="${t.height}">
+                  <div class="t-name" data-rename-table="${t.id}" title="Click para renombrar">${t.name}</div>
                   <div class="t-cap">${t.capacity} pers.</div>
                   <button class="table-tile-delete" data-delete-table="${t.id}" title="Eliminar mesa">×</button>
+                  <div class="table-tile-resize" title="Arrastrar para cambiar el tamaño"></div>
                 </div>`).join("")}
             </div>
           </div>`).join("")}
       `;
     }
+
+    function updateBulkToolbar() {
+      const bar = document.getElementById("bulk-toolbar");
+      if (!bar) return;
+      if (selectedTables.size === 0) {
+        bar.style.display = "none";
+      } else {
+        bar.style.display = "flex";
+        document.getElementById("bulk-count").textContent = `${selectedTables.size} mesa(s) seleccionada(s)`;
+      }
+      document.querySelectorAll(".editable-table").forEach((tile) => {
+        tile.classList.toggle("selected", selectedTables.has(tile.dataset.table));
+      });
+    }
+
     function wireSalon() {
       document.getElementById("add-room").addEventListener("click", () => {
         const overlay = showModal(`<h2>Nuevo salón</h2><div class="field"><label>Nombre</label><input id="room-name" /></div><button class="btn btn-primary" id="save-room">Guardar</button>`);
@@ -426,17 +450,31 @@
         const overlay = showModal(`<h2>Nueva mesa</h2>
           <div class="field"><label>Nombre</label><input id="table-name" placeholder="Mesa 6" /></div>
           <div class="field"><label>Capacidad</label><input id="table-cap" type="number" value="4" /></div>
-          <p class="small muted">Después de crearla podés arrastrarla a la posición que quieras.</p>
+          <div class="field"><label>Forma</label>
+            <select id="table-shape">
+              <option value="RECT">Rectangular</option>
+              <option value="CIRCLE">Redonda</option>
+            </select>
+          </div>
+          <p class="small muted">Después de crearla podés arrastrarla y redimensionarla desde la esquina.</p>
           <button class="btn btn-primary" id="save-table">Guardar</button>`);
+        const nameInput = overlay.querySelector("#table-name");
         overlay.querySelector("#save-table").addEventListener("click", async () => {
+          const shape = overlay.querySelector("#table-shape").value;
           try {
             await apiWithOverride("/tables", { method: "POST", body: {
-              roomId: btn.dataset.addTable, name: overlay.querySelector("#table-name").value,
+              roomId: btn.dataset.addTable, name: nameInput.value,
               capacity: Number(overlay.querySelector("#table-cap").value),
               posX: 20, posY: 20,
+              shape,
+              width: shape === "CIRCLE" ? 90 : 108,
+              height: shape === "CIRCLE" ? 90 : 88,
             }}, "tables:manage");
             closeModal(overlay); await refresh();
-          } catch (err) { toast(err.message, "error"); }
+          } catch (err) {
+            toast(err.message, "error");
+            if (err.status === 409) nameInput.classList.add("input-error");
+          }
         });
       }));
       document.querySelectorAll("[data-delete-table]").forEach(btn => btn.addEventListener("click", async (e) => {
@@ -447,7 +485,88 @@
           await refresh();
         } catch (err) { toast(err.message, "error"); }
       }));
+      wireTableRenaming();
+      wireTableSelection();
       wireTableDragging();
+      wireTableResizing();
+
+      const bulkDeleteBtn = document.getElementById("bulk-delete-btn");
+      if (bulkDeleteBtn) bulkDeleteBtn.addEventListener("click", async () => {
+        if (selectedTables.size === 0) return;
+        if (!confirm(`¿Eliminar las ${selectedTables.size} mesas seleccionadas? Esta acción no se puede deshacer.`)) return;
+        try {
+          await apiWithOverride("/tables/bulk-delete", { method: "POST", body: { ids: [...selectedTables] } }, "tables:manage");
+          toast("Mesas eliminadas.", "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      });
+      const bulkClearBtn = document.getElementById("bulk-clear-btn");
+      if (bulkClearBtn) bulkClearBtn.addEventListener("click", () => {
+        selectedTables = new Set();
+        updateBulkToolbar();
+      });
+    }
+
+    // Renombrar una mesa fácilmente: click en el nombre y se convierte en un
+    // campo editable ahí mismo (sin abrir un formulario aparte).
+    function wireTableRenaming() {
+      document.querySelectorAll("[data-rename-table]").forEach((nameEl) => {
+        nameEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (nameEl.querySelector("input")) return; // ya está en edición
+          const tableId = nameEl.dataset.renameTable;
+          const originalName = nameEl.textContent;
+          nameEl.innerHTML = `<input type="text" class="table-rename-input" value="${originalName.replace(/"/g, "&quot;")}" />`;
+          const input = nameEl.querySelector("input");
+          input.focus();
+          input.select();
+          let done = false;
+          async function commit() {
+            if (done) return;
+            done = true;
+            const newName = input.value.trim();
+            if (!newName || newName === originalName) {
+              nameEl.textContent = originalName;
+              return;
+            }
+            try {
+              await apiWithOverride(`/tables/${tableId}`, { method: "PATCH", body: { name: newName } }, "tables:manage");
+              toast("Mesa renombrada.", "success");
+              await refresh();
+            } catch (err) {
+              toast(err.message, "error");
+              input.classList.add("input-error");
+              nameEl.textContent = originalName;
+            }
+          }
+          input.addEventListener("keydown", (ev) => {
+            ev.stopPropagation();
+            if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+            if (ev.key === "Escape") { done = true; nameEl.textContent = originalName; }
+          });
+          input.addEventListener("blur", commit);
+          input.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+        });
+      });
+    }
+
+    // Selección múltiple de mesas (como archivos en una compu): Ctrl/Cmd+click
+    // o Shift+click agrega/quita una mesa de la selección en vez de abrirla,
+    // para poder aplicarles una acción en grupo (por ahora, borrado).
+    function wireTableSelection() {
+      document.querySelectorAll(".editable-table").forEach((tile) => {
+        tile.addEventListener("click", (e) => {
+          if (e.target.closest(".table-tile-delete") || e.target.closest(".table-rename-input")) return;
+          if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const id = tile.dataset.table;
+          if (selectedTables.has(id)) selectedTables.delete(id);
+          else selectedTables.add(id);
+          updateBulkToolbar();
+        });
+      });
+      updateBulkToolbar();
     }
 
     // Arrastre de mesas con el mouse/touch (pointer events cubre ambos) en
@@ -458,7 +577,8 @@
         let startX, startY, origLeft, origTop;
 
         tile.addEventListener("pointerdown", (e) => {
-          if (e.target.closest(".table-tile-delete")) return;
+          if (e.target.closest(".table-tile-delete") || e.target.closest(".table-tile-resize") || e.target.closest(".t-name")) return;
+          if (e.ctrlKey || e.metaKey || e.shiftKey) return; // esas combinaciones son para seleccionar, no mover
           dragging = true;
           tile.setPointerCapture(e.pointerId);
           tile.classList.add("dragging");
@@ -500,6 +620,60 @@
       });
     }
 
+    // Redimensionar una mesa arrastrando el tirador de la esquina inferior
+    // derecha, para poder ajustar su forma/tamaño de manera intuitiva en vez
+    // de tener siempre el mismo tamaño fijo.
+    function wireTableResizing() {
+      document.querySelectorAll(".table-tile-resize").forEach((handle) => {
+        const tile = handle.closest(".editable-table");
+        let resizing = false;
+        let startX, startY, origWidth, origHeight;
+
+        handle.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          resizing = true;
+          handle.setPointerCapture(e.pointerId);
+          startX = e.clientX;
+          startY = e.clientY;
+          origWidth = Number(tile.dataset.width);
+          origHeight = Number(tile.dataset.height);
+        });
+
+        handle.addEventListener("pointermove", (e) => {
+          if (!resizing) return;
+          e.stopPropagation();
+          let newWidth = Math.max(50, Math.min(280, origWidth + (e.clientX - startX)));
+          let newHeight = Math.max(50, Math.min(280, origHeight + (e.clientY - startY)));
+          if (tile.classList.contains("shape-circle")) {
+            // Para que el círculo se vea siempre redondo (no ovalado).
+            newHeight = newWidth;
+          }
+          tile.style.width = `${newWidth}px`;
+          tile.style.height = `${newHeight}px`;
+          tile.dataset.pendingWidth = Math.round(newWidth);
+          tile.dataset.pendingHeight = Math.round(newHeight);
+        });
+
+        async function endResize(e) {
+          if (!resizing) return;
+          resizing = false;
+          const width = tile.dataset.pendingWidth ? Number(tile.dataset.pendingWidth) : origWidth;
+          const height = tile.dataset.pendingHeight ? Number(tile.dataset.pendingHeight) : origHeight;
+          tile.dataset.width = width;
+          tile.dataset.height = height;
+          delete tile.dataset.pendingWidth;
+          delete tile.dataset.pendingHeight;
+          try {
+            await apiWithOverride(`/tables/${tile.dataset.table}`, { method: "PATCH", body: { width, height } }, "tables:manage");
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        }
+        handle.addEventListener("pointerup", endResize);
+        handle.addEventListener("pointercancel", endResize);
+      });
+    }
+
     // ---------------------------------------------------------------------
     // Usuarios
     // ---------------------------------------------------------------------
@@ -512,7 +686,7 @@
           <table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             ${users.map(u => `<tr>
-              <td>${u.name}</td><td>${u.email}</td><td>${ROLE_LABELS[u.role] || u.role}</td>
+              <td>${u.name}</td><td>${u.email}</td><td>${roleLabel(u.role)}</td>
               <td><span class="pill pill-${u.active ? "libre" : "pendiente_pago"}">${u.active ? "Activo" : "Inactivo"}</span></td>
               <td><button class="btn btn-sm" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? "Desactivar" : "Activar"}</button></td>
             </tr>`).join("")}
@@ -525,7 +699,7 @@
           <div class="field"><label>Nombre</label><input id="user-name" /></div>
           <div class="field"><label>Email</label><input id="user-email" type="email" /></div>
           <div class="field"><label>Contraseña</label><input id="user-password" type="password" /></div>
-          <div class="field"><label>Rol</label><select id="user-role">${ROLE_OPTIONS.map(r => `<option value="${r}">${ROLE_LABELS[r]}</option>`).join("")}</select></div>
+          <div class="field"><label>Rol</label><select id="user-role">${ROLE_OPTIONS.map(r => `<option value="${r}">${roleLabel(r)}</option>`).join("")}</select></div>
           <button class="btn btn-primary" id="save-user">Guardar</button>`);
         overlay.querySelector("#save-user").addEventListener("click", async () => {
           try {
@@ -656,7 +830,7 @@
         ${permissionGroups.map(group => `
           <div class="card mb16">
             <h3 style="margin-top:0">${group.label}</h3>
-            <table class="permissions-table"><thead><tr><th>Permiso</th>${CONFIGURABLE_ROLES.map(r => `<th>${ROLE_LABELS[r]}</th>`).join("")}</tr></thead>
+            <table class="permissions-table"><thead><tr><th>Permiso</th>${CONFIGURABLE_ROLES.map(r => `<th>${roleLabel(r)}</th>`).join("")}</tr></thead>
             <tbody>
               ${group.permissions.map(p => `<tr>
                 <td>${p.label}</td>
@@ -737,6 +911,21 @@
           <div class="field"><label>Usuario SMTP</label><input id="set-smtp-user" value="${s.smtp_user || ""}" /></div>
           <div class="field"><label>Contraseña SMTP ${s.smtp_pass_set ? "(ya configurada, dejá en blanco para no cambiarla)" : ""}</label><input id="set-smtp-pass" type="password" /></div>
           <button class="btn" id="save-settings-smtp">Guardar configuración de SMTP</button>
+        </div>
+        <div class="card mb16">
+          <h3 style="margin-top:0">Idioma</h3>
+          <p class="small muted">Cambia el idioma de toda la interfaz para todo el personal (navegación, títulos y acciones principales). Los nombres de productos, categorías y mesas que vos cargaste, y los mensajes que devuelve el sistema, se mantienen en español.</p>
+          <div class="field">
+            <label>Idioma de la interfaz</label>
+            <select id="set-language">
+              <option value="es" ${(s.language || "es") === "es" ? "selected" : ""}>Español</option>
+              <option value="fr" ${s.language === "fr" ? "selected" : ""}>Français</option>
+              <option value="en" ${s.language === "en" ? "selected" : ""}>English</option>
+              <option value="pt" ${s.language === "pt" ? "selected" : ""}>Português</option>
+              <option value="it" ${s.language === "it" ? "selected" : ""}>Italiano</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="save-settings-language">Guardar idioma</button>
         </div>`;
     }
     function wireParametros() {
@@ -788,10 +977,20 @@
           await refresh();
         } catch (err) { toast(err.message, "error"); }
       }
+      async function saveLanguage() {
+        try {
+          const language = document.getElementById("set-language").value;
+          await apiWithOverride("/settings", { method: "PATCH", body: { language } }, "settings:manage");
+          setLang(language); // aplica de inmediato, sin esperar la próxima carga de página
+          toast("Idioma actualizado.", "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      }
       document.getElementById("save-settings-1").addEventListener("click", saveBusinessData);
       document.getElementById("save-settings-tax").addEventListener("click", saveTaxData);
       document.getElementById("save-settings-2").addEventListener("click", saveMailData);
       document.getElementById("save-settings-smtp").addEventListener("click", saveSmtpData);
+      document.getElementById("save-settings-language").addEventListener("click", saveLanguage);
     }
 
     // ---------------------------------------------------------------------

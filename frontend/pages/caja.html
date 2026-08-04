@@ -10,7 +10,7 @@
   <div id="app-nav"></div>
   <div class="container">
     <div class="flex-between mb16">
-      <h2 style="margin:0">Cierre de caja</h2>
+      <h2 style="margin:0" data-i18n="page.caja.title">Cierre de caja</h2>
     </div>
 
     <div class="card mb16">
@@ -18,6 +18,19 @@
       <p class="small muted">Desde el último cierre (o desde el principio, si todavía no hiciste ninguno) hasta este momento. Al confirmar, se guarda este resumen como el cierre del día y arranca un período nuevo.</p>
       <div id="preview-summary"></div>
       <button class="btn btn-primary" id="close-cash-btn">Cerrar caja ahora</button>
+    </div>
+
+    <div class="card mb16">
+      <h3 style="margin-top:0" data-i18n="page.caja.tipsTitle">Cuenta de propinas</h3>
+      <p class="small muted">Lo que se paga de más sobre el total de un pedido (por ejemplo, pagar $1000 por una cuenta de $950) se acredita automáticamente acá, como propina. También se puede agregar una propina manualmente en cualquier momento.</p>
+      <div class="flex-between mb8">
+        <div><span class="small muted">Saldo disponible</span><br /><strong id="tips-balance" style="font-size:1.4rem">$0,00</strong></div>
+        <div class="flex-gap" id="tips-actions"></div>
+      </div>
+      <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Pedido</th><th>Registrado por</th><th>Notas</th></tr></thead>
+        <tbody id="tips-body"></tbody>
+      </table>
     </div>
 
     <div class="card">
@@ -30,6 +43,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"]);
@@ -99,8 +113,79 @@
         }
       });
 
+      // ---------------------------------------------------------------------
+      // Cuenta de propinas
+      // ---------------------------------------------------------------------
+      const canManageTips = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
+
+      function tipTypeLabel(type) {
+        return { AUTO_OVERPAYMENT: "Sobrepago automático", MANUAL_ADD: "Agregado manual", RESET: "Reinicio" }[type] || type;
+      }
+
+      async function loadTips() {
+        try {
+          const data = await api("/tips");
+          document.getElementById("tips-balance").textContent = `$${money(data.balance)}`;
+          const actionsEl = document.getElementById("tips-actions");
+          actionsEl.innerHTML = canManageTips
+            ? `<button class="btn btn-sm" id="tips-add-btn" data-i18n="page.caja.tipsAdd">${t("page.caja.tipsAdd")}</button>
+               <button class="btn btn-sm btn-danger" id="tips-reset-btn" data-i18n="page.caja.tipsReset">${t("page.caja.tipsReset")}</button>`
+            : "";
+          const body = document.getElementById("tips-body");
+          if (data.transactions.length === 0) {
+            body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Todavía no hay movimientos.</td></tr>`;
+          } else {
+            body.innerHTML = data.transactions
+              .map(
+                (tx) => `<tr>
+                  <td>${fmtDate(tx.created_at)}</td>
+                  <td>${tipTypeLabel(tx.type)}</td>
+                  <td>${Number(tx.amount) < 0 ? "-" : ""}$${money(Math.abs(tx.amount))}</td>
+                  <td>${tx.order_code ? "#" + tx.order_code : "-"}</td>
+                  <td>${tx.created_by_name || "-"}</td>
+                  <td class="small muted">${tx.notes || "-"}</td>
+                </tr>`
+              )
+              .join("");
+          }
+          if (canManageTips) {
+            document.getElementById("tips-add-btn").addEventListener("click", () => {
+              const overlay = showModal(`
+                <h2 data-i18n="page.caja.tipsAdd">${t("page.caja.tipsAdd")}</h2>
+                <div class="field"><label>Monto</label><input id="tip-add-amount" type="number" step="0.01" min="0.01" /></div>
+                <div class="field"><label>Notas (opcional)</label><input id="tip-add-notes" /></div>
+                <button class="btn btn-primary" id="tip-add-save">Guardar</button>
+              `);
+              overlay.querySelector("#tip-add-save").addEventListener("click", async () => {
+                try {
+                  await api("/tips/add", { method: "POST", body: {
+                    amount: Number(overlay.querySelector("#tip-add-amount").value),
+                    notes: overlay.querySelector("#tip-add-notes").value || null,
+                  }});
+                  closeModal(overlay);
+                  toast("Propina agregada.", "success");
+                  await loadTips();
+                } catch (err) { toast(err.message, "error"); }
+              });
+            });
+            document.getElementById("tips-reset-btn").addEventListener("click", async () => {
+              if (!confirm("¿Reiniciar la cuenta de propinas? El saldo actual queda en $0 (se conserva el historial).")) return;
+              const notes = prompt("Notas sobre este reinicio (opcional, ej. \"reparto entre el personal\"):", "") || null;
+              try {
+                await api("/tips/reset", { method: "POST", body: { notes } });
+                toast("Cuenta de propinas reiniciada.", "success");
+                await loadTips();
+              } catch (err) { toast(err.message, "error"); }
+            });
+          }
+        } catch (err) {
+          document.getElementById("tips-balance").textContent = "-";
+        }
+      }
+
       loadPreview();
       loadHistory();
+      loadTips();
     }
   </script>
 </body>

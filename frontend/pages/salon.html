@@ -10,8 +10,8 @@
   <div id="app-nav"></div>
   <div class="container">
     <div class="flex-between mb16">
-      <h2 style="margin:0">Salón</h2>
-      <button class="btn btn-primary" id="new-order-btn">+ Pedido para retiro / delivery</button>
+      <h2 style="margin:0" data-i18n="page.salon.title">Salón</h2>
+      <button class="btn btn-primary" id="new-order-btn" data-i18n="page.salon.newOrderBtn">+ Pedido para retiro / delivery</button>
     </div>
     <div class="room-tabs" id="room-tabs"></div>
     <div class="floor" id="floor"></div>
@@ -19,6 +19,7 @@
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireAuth();
@@ -70,8 +71,9 @@
         .map((t) => {
           const left = t.pos_x;
           const top = t.pos_y;
+          const shapeClass = t.shape === "CIRCLE" ? "shape-circle" : "";
           return `
-          <div class="table-tile ${t.status.toLowerCase()}" style="left:${left}px; top:${top}px" data-table="${t.id}">
+          <div class="table-tile ${t.status.toLowerCase()} ${shapeClass}" style="left:${left}px; top:${top}px; width:${t.width || 108}px; height:${t.height || 88}px" data-table="${t.id}">
             <div class="t-name">${t.name}</div>
             <div class="t-cap">${t.capacity} pers.</div>
             <span class="pill pill-${t.status.toLowerCase()}">${statusLabel(t.status)}</span>

@@ -61,7 +61,7 @@
         <div class="product-grid" id="product-grid"></div>
       </div>
       <div class="card ticket">
-        <h3 style="margin-top:0">Comanda</h3>
+        <h3 style="margin-top:0" data-i18n="page.pos.comanda">Comanda</h3>
         <div id="ticket-items"></div>
         <div class="mt16" id="ticket-totals"></div>
         <div class="flex-gap mt16" style="flex-wrap:wrap" id="ticket-actions"></div>
@@ -73,6 +73,7 @@
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"]);
@@ -417,9 +418,15 @@
       const totalsEl = document.getElementById("ticket-totals");
       const discountAmount = (Number(order.subtotal) * Number(order.discount_percent)) / 100;
       const taxAmount = Number(order.tax_amount || 0);
+      // El motivo del descuento solo se muestra a roles de gerencia: quien
+      // aplica el descuento lo carga, pero no necesariamente necesita verlo
+      // reflejado todo el tiempo en el ticket (evita que se vuelva ruido para
+      // mozos/cajeros); el gerente sí puede auditar por qué se dio.
+      const canSeeDiscountReason = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
       totalsEl.innerHTML = `
         <div class="ticket-total-row"><span>Subtotal</span><span>$${money(order.subtotal)}</span></div>
         ${Number(order.discount_percent) > 0 ? `<div class="ticket-total-row"><span>Descuento (${order.discount_percent}%)</span><span>-$${money(discountAmount)}</span></div>` : ""}
+        ${Number(order.discount_percent) > 0 && canSeeDiscountReason ? `<div class="ticket-total-row small muted" style="margin-top:-6px"><span>Motivo: ${order.discount_reason ? order.discount_reason : "(sin especificar)"}</span><span></span></div>` : ""}
         ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch?.taxLabel || "IVA"}${branch?.taxMode === "INCLUSIVE" ? " (incluido)" : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
         <div class="ticket-total-row grand"><span>Total</span><span>$${money(order.total)}</span></div>
         ${order.payments.length > 0 ? `<div class="ticket-total-row small muted"><span>Pagado</span><span>$${money(order.totalPaid)}</span></div>` : ""}
@@ -495,11 +502,11 @@
       }
       const pendingToSend = order.items.some((i) => !i.canceled && !i.sent_at);
       let html = "";
-      if (pendingToSend) html += `<button class="btn btn-accent" id="send-kitchen-btn">Enviar a cocina</button>`;
-      html += `<button class="btn" id="discount-btn">Aplicar descuento</button>`;
-      if (order.table_id) html += `<button class="btn" id="request-bill-btn">Pedir la cuenta</button>`;
-      html += `<button class="btn btn-primary" id="pay-btn">Cobrar</button>`;
-      html += `<button class="btn btn-danger" id="cancel-order-btn">Cancelar pedido</button>`;
+      if (pendingToSend) html += `<button class="btn btn-accent" id="send-kitchen-btn" data-i18n="page.pos.sendKitchen">${t("page.pos.sendKitchen")}</button>`;
+      html += `<button class="btn" id="discount-btn" data-i18n="page.pos.applyDiscount">${t("page.pos.applyDiscount")}</button>`;
+      if (order.table_id) html += `<button class="btn" id="request-bill-btn" data-i18n="page.pos.requestBill">${t("page.pos.requestBill")}</button>`;
+      html += `<button class="btn btn-primary" id="pay-btn" data-i18n="page.pos.pay">${t("page.pos.pay")}</button>`;
+      html += `<button class="btn btn-danger" id="cancel-order-btn" data-i18n="page.pos.cancelOrder">${t("page.pos.cancelOrder")}</button>`;
       html += `<button class="btn btn-sm" id="print-ticket-btn">🖨️ Imprimir ticket</button>`;
       html += `<button class="btn btn-sm" id="download-ticket-btn">Descargar ticket (.txt)</button>`;
       el.innerHTML = html;

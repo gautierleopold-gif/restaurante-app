@@ -10,7 +10,7 @@
   <div id="app-nav"></div>
   <div class="container">
     <div class="flex-between mb16">
-      <h2 style="margin:0">Comandas</h2>
+      <h2 style="margin:0" data-i18n="page.cocina.title">Comandas</h2>
       <label class="flex-gap small"><input type="checkbox" id="autorefresh" checked style="width:auto" /> Actualización automática</label>
     </div>
     <div class="kds-board" id="kds-board"></div>
@@ -18,6 +18,7 @@
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "COCINA", "MOZO"]);

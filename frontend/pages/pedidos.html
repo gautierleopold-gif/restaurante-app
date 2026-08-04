@@ -10,7 +10,7 @@
   <div id="app-nav"></div>
   <div class="container">
     <div class="flex-between mb16">
-      <h2 style="margin:0">Pedidos</h2>
+      <h2 style="margin:0" data-i18n="page.pedidos.title">Pedidos</h2>
       <div class="flex-gap">
         <a href="/pages/factura-libre.html" class="btn">+ Nueva factura libre</a>
         <a href="/pages/pos.html?new=1" class="btn btn-primary">+ Retiro / Delivery</a>
@@ -33,6 +33,7 @@
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"]);

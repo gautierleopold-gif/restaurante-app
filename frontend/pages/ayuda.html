@@ -16,7 +16,7 @@
 <body>
   <div id="app-nav"></div>
   <div class="container">
-    <h2 class="mb16">Ayuda y manual de usuario</h2>
+    <h2 class="mb16" data-i18n="page.ayuda.title">Ayuda y manual de usuario</h2>
 
     <div class="card mb16">
       <h3 style="margin-top:0">Novedades</h3>
@@ -132,6 +132,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/ui.js"></script>
   <script>
     const user = requireRole(["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"]);
