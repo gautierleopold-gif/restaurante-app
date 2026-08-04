@@ -195,12 +195,16 @@ router.get(
   "/products",
   requirePermission("menu:view"),
   asyncHandler(async (req, res) => {
+    // LEFT JOIN (no JOIN): un producto puede no tener categoría de menú
+    // asignada (ver categoryId más abajo) y aun así tiene que listarse acá,
+    // para que siga siendo visible/editable desde Administración aunque no
+    // aparezca en la carta ni en el POS.
     const { rows: products } = await query(
       `SELECT p.*, c.name AS category_name, s.name AS station_name
        FROM products p
-       JOIN categories c ON c.id = p.category_id
+       LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN stations s ON s.id = p.station_id
-       ORDER BY c."order" ASC, p.name ASC`
+       ORDER BY c."order" ASC NULLS LAST, p.name ASC`
     );
     const { rows: variants } = await query(`SELECT * FROM product_variants`);
     const { rows: pmg } = await query(`SELECT * FROM product_modifier_groups`);
@@ -230,7 +234,10 @@ router.post(
     const schema = z.object({
       name: z.string().min(1),
       description: z.string().optional().nullable(),
-      categoryId: z.string().uuid(),
+      // Opcional: un producto sin categoría no aparece en la carta/POS pero
+      // sigue apareciendo en Administración → Productos (ver comentario en
+      // schema.sql sobre products.category_id).
+      categoryId: z.string().uuid().optional().nullable(),
       stationId: z.string().uuid().optional().nullable(),
       basePrice: z.number().nonnegative(),
       isComposite: z.boolean().default(false),
@@ -242,7 +249,7 @@ router.post(
     const { rows } = await query(
       `INSERT INTO products (name, description, category_id, station_id, base_price, is_composite, image_url)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [data.name, data.description || null, data.categoryId, data.stationId || null, data.basePrice, data.isComposite, data.imageUrl || null]
+      [data.name, data.description || null, data.categoryId || null, data.stationId || null, data.basePrice, data.isComposite, data.imageUrl || null]
     );
     const product = rows[0];
     for (const v of data.variants) {
@@ -270,7 +277,9 @@ router.patch(
     const schema = z.object({
       name: z.string().min(1).optional(),
       description: z.string().optional().nullable(),
-      categoryId: z.string().uuid().optional(),
+      // Nullable: permite quitarle la categoría a un producto (queda sin
+      // categoría de menú, oculto de la carta/POS pero visible en Productos).
+      categoryId: z.string().uuid().optional().nullable(),
       stationId: z.string().uuid().optional().nullable(),
       basePrice: z.number().nonnegative().optional(),
       isComposite: z.boolean().optional(),

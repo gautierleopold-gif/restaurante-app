@@ -55,6 +55,7 @@ router.get(
         taxRate: branch.tax_rate != null ? Number(branch.tax_rate) : 0,
         taxMode: branch.tax_mode || "NONE",
         taxLabel: branch.tax_label || "IVA",
+        language: branch.language || "es",
       },
     });
   })
@@ -78,6 +79,7 @@ const settingsSchema = z.object({
   taxRate: z.number().min(0).max(100).optional(),
   taxMode: z.enum(["NONE", "INCLUSIVE", "ADDITIVE"]).optional(),
   taxLabel: z.string().min(1).optional(),
+  language: z.enum(["es", "fr", "en", "pt", "it"]).optional(),
 });
 
 router.patch(
@@ -109,6 +111,7 @@ router.patch(
       taxRate: "tax_rate",
       taxMode: "tax_mode",
       taxLabel: "tax_label",
+      language: "language",
     };
     // smtpPass y resendApiKey se manejan aparte: solo se actualizan si vino
     // un valor no vacío, para no pisarlos con "" cuando el formulario los

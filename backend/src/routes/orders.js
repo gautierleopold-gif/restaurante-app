@@ -574,7 +574,7 @@ router.post(
     // pedido automáticamente y se libera la mesa: se asume que al cobrar la
     // gente se está yendo, permitiendo un segundo servicio en la mesa sin
     // pasos manuales adicionales.
-    const { payment, autoClosed } = await withTransaction(async (client) => {
+    const { payment, autoClosed, tipCredited } = await withTransaction(async (client) => {
       const { rows: orderRows } = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [
         req.params.id,
       ]);
@@ -588,6 +588,7 @@ router.post(
       const payment = paymentRows[0];
 
       let autoClosed = false;
+      let tipCredited = 0;
       if (order.status === "ABIERTO") {
         const { rows: totalRows } = await client.query(
           `SELECT COALESCE(SUM(amount),0) AS total_paid FROM payments WHERE order_id = $1`,
@@ -602,10 +603,23 @@ router.post(
             await client.query(`UPDATE tables SET status = 'LIBRE' WHERE id = $1`, [order.table_id]);
           }
           autoClosed = true;
+
+          // Lo que se pagó de más sobre el total (por ejemplo, pagar $1000 en
+          // efectivo por una cuenta de $950) se acredita automáticamente a la
+          // cuenta de propinas en vez de quedar solo como un dato suelto.
+          const overpayment = totalPaid - Number(order.total);
+          if (overpayment > 0.5) {
+            tipCredited = Math.round(overpayment * 100) / 100;
+            await client.query(
+              `INSERT INTO tip_transactions (branch_id, order_id, type, amount, created_by_id)
+               VALUES ($1,$2,'AUTO_OVERPAYMENT',$3,$4)`,
+              [order.branch_id || null, order.id, tipCredited.toFixed(2), req.user.id]
+            );
+          }
         }
       }
 
-      return { payment, autoClosed };
+      return { payment, autoClosed, tipCredited };
     });
 
     await logAction({
@@ -624,10 +638,19 @@ router.post(
         details: { reason: "Cierre automático al completar el pago." },
       });
     }
+    if (tipCredited > 0) {
+      await logAction({
+        userId: req.user.id,
+        action: "TIP_AUTO_CREDITED",
+        entity: "Order",
+        entityId: req.params.id,
+        details: { amount: tipCredited },
+      });
+    }
 
     const fullOrder = await fetchFullOrder(req.params.id);
     emitOrderUpdate(req, fullOrder);
-    res.status(201).json({ payment, order: fullOrder, autoClosed });
+    res.status(201).json({ payment, order: fullOrder, autoClosed, tipCredited });
   })
 );
 

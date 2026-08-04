@@ -65,6 +65,20 @@ router.delete(
 // ---------------------------------------------------------------------------
 // Mesas (Tables)
 // ---------------------------------------------------------------------------
+
+// Los nombres de mesa tienen que ser únicos (sin importar mayúsculas/acentos
+// de más o menos espacios) para que el personal nunca tenga dos mesas con el
+// mismo nombre y se confunda sobre a cuál corresponde un pedido.
+async function assertUniqueTableName(name, excludeId) {
+  const { rows } = await query(
+    `SELECT id FROM tables WHERE lower(trim(name)) = lower(trim($1)) AND id IS DISTINCT FROM $2`,
+    [name, excludeId || null]
+  );
+  if (rows.length > 0) {
+    throw Object.assign(new Error(`Ya existe una mesa llamada "${name}". Elegí otro nombre.`), { status: 409 });
+  }
+}
+
 router.post(
   "/tables",
   requirePermission("tables:manage"),
@@ -75,11 +89,16 @@ router.post(
       capacity: z.number().int().min(1).default(4),
       posX: z.number().int().default(0),
       posY: z.number().int().default(0),
+      width: z.number().int().min(40).max(400).default(108),
+      height: z.number().int().min(40).max(400).default(88),
+      shape: z.enum(["RECT", "CIRCLE"]).default("RECT"),
     });
     const data = schema.parse(req.body);
+    await assertUniqueTableName(data.name);
     const { rows } = await query(
-      `INSERT INTO tables (room_id, name, capacity, pos_x, pos_y) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [data.roomId, data.name, data.capacity, data.posX, data.posY]
+      `INSERT INTO tables (room_id, name, capacity, pos_x, pos_y, width, height, shape)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [data.roomId, data.name, data.capacity, data.posX, data.posY, data.width, data.height, data.shape]
     );
     res.status(201).json({ table: rows[0] });
   })
@@ -95,9 +114,22 @@ router.patch(
       posX: z.number().int().optional(),
       posY: z.number().int().optional(),
       roomId: z.string().uuid().optional(),
+      width: z.number().int().min(40).max(400).optional(),
+      height: z.number().int().min(40).max(400).optional(),
+      shape: z.enum(["RECT", "CIRCLE"]).optional(),
     });
     const fields = schema.parse(req.body);
-    const colMap = { name: "name", capacity: "capacity", posX: "pos_x", posY: "pos_y", roomId: "room_id" };
+    if (fields.name) await assertUniqueTableName(fields.name, req.params.id);
+    const colMap = {
+      name: "name",
+      capacity: "capacity",
+      posX: "pos_x",
+      posY: "pos_y",
+      roomId: "room_id",
+      width: "width",
+      height: "height",
+      shape: "shape",
+    };
     const keys = Object.keys(fields);
     if (keys.length === 0) return res.status(400).json({ error: "Nada para actualizar." });
     const setClause = keys.map((k, i) => `${colMap[k]} = $${i + 1}`).join(", ");
@@ -105,6 +137,9 @@ router.patch(
       `UPDATE tables SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *`,
       [...keys.map((k) => fields[k]), req.params.id]
     );
+    if (rows.length === 0) return res.status(404).json({ error: "Mesa no encontrada." });
+    const io = req.app.get("io");
+    io.emit("tables:changed");
     res.json({ table: rows[0] });
   })
 );
@@ -114,7 +149,31 @@ router.delete(
   requirePermission("tables:manage"),
   asyncHandler(async (req, res) => {
     await query(`DELETE FROM tables WHERE id = $1`, [req.params.id]);
+    const io = req.app.get("io");
+    io.emit("tables:changed");
     res.status(204).send();
+  })
+);
+
+// Borrado en grupo: para poder seleccionar varias mesas (como archivos en una
+// compu) y borrarlas juntas en vez de una por una.
+router.post(
+  "/tables/bulk-delete",
+  requirePermission("tables:manage"),
+  asyncHandler(async (req, res) => {
+    const schema = z.object({ ids: z.array(z.string().uuid()).min(1) });
+    const { ids } = schema.parse(req.body);
+    const { rows } = await query(`DELETE FROM tables WHERE id = ANY($1::uuid[]) RETURNING id, name`, [ids]);
+    await logAction({
+      userId: req.user.id,
+      action: "TABLES_BULK_DELETED",
+      entity: "Table",
+      entityId: null,
+      details: { count: rows.length, names: rows.map((r) => r.name) },
+    });
+    const io = req.app.get("io");
+    io.emit("tables:changed");
+    res.json({ deleted: rows.length });
   })
 );
 
