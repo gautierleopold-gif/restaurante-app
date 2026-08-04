@@ -63,6 +63,10 @@ const DEFAULT_PERMISSIONS = {
 
   // Facturación libre / plantillas de factura
   "invoices:manageTemplates": ["ADMIN", "DUENIO"],
+
+  // Cuenta de propinas
+  "tips:view": ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"],
+  "tips:manage": ["ADMIN", "DUENIO", "ENCARGADO"],
 };
 
 // Etiquetas legibles para mostrar en la pantalla de Permisos, agrupadas por
@@ -131,6 +135,13 @@ const PERMISSION_GROUPS = [
   {
     label: "Facturación avanzada",
     permissions: [["invoices:manageTemplates", "Administrar plantillas y logo de factura"]],
+  },
+  {
+    label: "Cuenta de propinas",
+    permissions: [
+      ["tips:view", "Ver el saldo e historial de la cuenta de propinas"],
+      ["tips:manage", "Agregar propinas manualmente y reiniciar la cuenta"],
+    ],
   },
 ];
 
