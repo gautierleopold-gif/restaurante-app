@@ -19,6 +19,7 @@ const cashClosureRoutes = require("./routes/cashClosures");
 const invoiceTemplateRoutes = require("./routes/invoiceTemplates");
 const freeInvoiceRoutes = require("./routes/freeInvoices");
 const importMenuRoutes = require("./routes/importMenu");
+const tipRoutes = require("./routes/tips");
 const { pool } = require("./db/pool");
 const { loadOverrides } = require("./lib/permissions");
 
@@ -56,6 +57,7 @@ app.use("/api/cash-closures", cashClosureRoutes);
 app.use("/api/invoice-templates", invoiceTemplateRoutes);
 app.use("/api/free-invoices", freeInvoiceRoutes);
 app.use("/api/import", importMenuRoutes);
+app.use("/api/tips", tipRoutes);
 
 io.on("connection", (socket) => {
   socket.on("disconnect", () => {});
