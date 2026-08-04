@@ -74,6 +74,8 @@ ALTER TABLE branches ADD COLUMN IF NOT EXISTS tax_label TEXT NOT NULL DEFAULT 'I
 -- saliente a los puertos de SMTP (25/465/587): si hay una API key configurada
 -- acá, se usa esto en vez de SMTP para enviar las facturas por mail.
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS resend_api_key TEXT;
+-- Idioma de la interfaz para todo el personal de la sucursal (es/fr/en/pt/it).
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'es';
 
 -- Usuarios ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
@@ -127,6 +129,12 @@ CREATE TABLE IF NOT EXISTS products (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- La categoría de un producto ahora es opcional: un producto sin categoría
+-- de menú asignada no aparece en la carta ni en el POS, pero sigue visible y
+-- editable desde Administración → Productos (copia el modelo de Fudo para
+-- productos que no están pensados para venderse por el menú normal).
+ALTER TABLE products ALTER COLUMN category_id DROP NOT NULL;
+
 CREATE TABLE IF NOT EXISTS product_variants (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -179,6 +187,13 @@ CREATE TABLE IF NOT EXISTS tables (
   pos_y    INT NOT NULL DEFAULT 0,
   status   table_status NOT NULL DEFAULT 'LIBRE'
 );
+
+-- Forma y tamaño de la mesa en el editor de salón: se puede redimensionar
+-- arrastrando una esquina y elegir si se dibuja como rectángulo o círculo,
+-- en vez de tener siempre el mismo tamaño/forma fija para todas las mesas.
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS width INT NOT NULL DEFAULT 108;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS height INT NOT NULL DEFAULT 88;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS shape TEXT NOT NULL DEFAULT 'RECT';
 
 -- Pedidos (POS) ---------------------------------------------------------------
 CREATE SEQUENCE IF NOT EXISTS orders_code_seq;
@@ -360,6 +375,29 @@ CREATE TABLE IF NOT EXISTS cash_closures (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_cash_closures_branch ON cash_closures(branch_id, period_to);
+-- Cuenta de propinas (como en Fudo): lo que se paga de más sobre el total de
+-- un pedido (por ejemplo, pagar $1000 por una cuenta de $950) se acredita
+-- automáticamente acá en vez de perderse, y también se puede agregar una
+-- propina manualmente en cualquier momento. El saldo es la suma de todos los
+-- movimientos; "reiniciar" (backoffice, gerentes) no borra el historial, sólo
+-- agrega un movimiento negativo que lleva el saldo a $0, para mantener
+-- trazabilidad de a quién/cuándo se reinició.
+DO $$ BEGIN
+  CREATE TYPE tip_transaction_type AS ENUM ('AUTO_OVERPAYMENT', 'MANUAL_ADD', 'RESET');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS tip_transactions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id     UUID REFERENCES branches(id),
+  order_id      UUID REFERENCES orders(id),
+  type          tip_transaction_type NOT NULL,
+  amount        NUMERIC(10,2) NOT NULL,
+  notes         TEXT,
+  created_by_id UUID REFERENCES users(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tip_transactions_branch ON tip_transactions(branch_id, created_at);
+
 -- Factura libre (no ligada a un pedido): ítems cargados manualmente.
 ALTER TABLE invoices ALTER COLUMN order_id DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS invoice_items (
