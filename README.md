@@ -24,7 +24,22 @@ A partir de una lista de ajustes pedidos sobre la Fase 2 ya en producción, se s
 
 ## Novedades de esta entrega (Fase 4)
 
-- **Importador de menú desde Fudo u otro sistema**: desde **Administración → Productos → "Importar desde Excel/Fudo"** se puede subir un archivo .xlsx o .csv exportado de Fudo o de cualquier otro sistema de gestión de restaurante, y traer de una sola vez las categorías, productos, variantes y grupos de adicionales. La app sugiere automáticamente a qué campo corresponde cada columna del archivo (usando los nombres de columna documentados por Fudo y sinónimos genéricos), pero el mapeo siempre se puede corregir a mano antes de importar — no depende de un formato exacto de origen. Si un producto ya existe (misma categoría y nombre), se actualiza en vez de duplicarse, así que importar el mismo archivo más de una vez es seguro. Cada paso muestra un resumen de lo creado/actualizado y el detalle de cualquier fila con error.
+- **Importador de menú desde Fudo u otro sistema**: desde **Administración → Productos → "Importar desde Excel/Fudo"** se puede subir un archivo .xlsx, **.xls** (formato legacy, el que exporta Fudo) o .csv exportado de Fudo o de cualquier otro sistema de gestión de restaurante, y traer de una sola vez las categorías, productos, variantes y grupos de adicionales. La app sugiere automáticamente a qué campo corresponde cada columna del archivo (usando los nombres de columna documentados por Fudo y sinónimos genéricos), pero el mapeo siempre se puede corregir a mano antes de importar — no depende de un formato exacto de origen. Si un producto ya existe (misma categoría y nombre), se actualiza en vez de duplicarse, así que importar el mismo archivo más de una vez es seguro. Cada paso muestra un resumen de lo creado/actualizado y el detalle de cualquier fila con error. (El parser se reescribió con la librería `xlsx`/SheetJS para poder leer el formato `.xls` legacy que exporta Fudo, además de `.xlsx`.)
+
+## Novedades de esta entrega (Fase 5)
+
+A partir de un Word ("Modificaciones FUDO 2.docx") con 10 pedidos de ajuste sobre Salón/mesas, POS y caja:
+
+- **Mesas con forma y tamaño editables**: al crear una mesa se elige forma (rectangular o redonda) y, desde Administración → Salón y mesas, se puede redimensionar arrastrando el tirador de la esquina inferior derecha (antes solo se podía mover de posición).
+- **Error prolijo al repetir un nombre de mesa**: si dos mesas del mismo local (en cualquier salón) quedarían con el mismo nombre, se muestra un aviso claro en vez de un error genérico.
+- **Selección múltiple de mesas y borrado en lote**: Ctrl/Cmd+click (o Shift+click) sobre una mesa la agrega a una selección múltiple, como archivos en una computadora; aparece una barra con la cantidad seleccionada y un botón para eliminarlas todas juntas.
+- **Renombrar una mesa al toque**: un click sobre el nombre lo convierte en un campo editable ahí mismo, sin abrir ningún formulario aparte.
+- **Motivo del descuento visible para encargados**: cuando se aplica un descuento a un pedido, el motivo queda visible en el detalle del pedido para Administrador/Dueño/Encargado (antes solo quedaba guardado, sin mostrarse).
+- **Cuenta de propinas automática**: lo que se paga de más al cobrar un pedido completo (ej. pagar $1000 por una cuenta de $950) se acredita solo como propina; también se puede agregar una propina a mano en cualquier momento. Se ve y gestiona desde **Cierre de caja → Cuenta de propinas**.
+- **Selector de categorías del POS sin scroll horizontal**: se rediseñó para que, aunque haya decenas de categorías (como las ~46 que trae un menú real de Fudo), se puedan ver y elegir sin tener que desplazarse de costado.
+- **Productos sin categoría**: un producto puede no tener categoría asignada; en ese caso no aparece en la carta ni en el POS, pero sigue visible y editable desde Administración → Productos (igual que en Fudo).
+- **Reiniciar la cuenta de propinas**: Administrador/Dueño/Encargado pueden poner el saldo disponible en $0 (por ejemplo, después de repartirlas entre el personal); el historial completo de movimientos no se borra, solo se agrega un registro de reinicio para mantener la trazabilidad.
+- **Interfaz en 5 idiomas**: desde Administración → Parámetros → Idioma se puede elegir español, francés, inglés, portugués o italiano para toda la navegación, títulos y botones principales de todo el personal. Los nombres de productos/categorías/mesas que cada negocio cargó y los mensajes que devuelve el sistema se mantienen siempre en español.
 
 ## Qué incluye la aplicación
 
