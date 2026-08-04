@@ -1,15 +1,17 @@
 // Utilidades de interfaz compartidas: navegación superior, toasts y modales.
 
 const NAV_LINKS = [
-  { href: "/pages/salon.html", label: "Salón", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"] },
-  { href: "/pages/pos.html", label: "Nuevo pedido", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"] },
-  { href: "/pages/pedidos.html", label: "Pedidos", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"] },
-  { href: "/pages/cocina.html", label: "Cocina", roles: ["ADMIN", "DUENIO", "ENCARGADO", "COCINA", "MOZO"] },
-  { href: "/pages/caja.html", label: "Cierre de caja", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"] },
-  { href: "/pages/admin.html", label: "Administración", roles: ["ADMIN", "DUENIO", "ENCARGADO"] },
-  { href: "/pages/ayuda.html", label: "Ayuda", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"] },
+  { href: "/pages/salon.html", key: "nav.salon", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"] },
+  { href: "/pages/pos.html", key: "nav.nuevoPedido", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"] },
+  { href: "/pages/pedidos.html", key: "nav.pedidos", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO"] },
+  { href: "/pages/cocina.html", key: "nav.cocina", roles: ["ADMIN", "DUENIO", "ENCARGADO", "COCINA", "MOZO"] },
+  { href: "/pages/caja.html", key: "nav.caja", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"] },
+  { href: "/pages/admin.html", key: "nav.admin", roles: ["ADMIN", "DUENIO", "ENCARGADO"] },
+  { href: "/pages/ayuda.html", key: "nav.ayuda", roles: ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO", "MOZO", "COCINA"] },
 ];
 
+// Etiquetas "de fábrica" en español; si i18n.js está cargado, ROLE_LABEL(role)
+// usa la traducción según el idioma configurado en la sucursal.
 const ROLE_LABELS = {
   ADMIN: "Administrador",
   DUENIO: "Dueño/Gerente",
@@ -19,6 +21,11 @@ const ROLE_LABELS = {
   COCINA: "Cocina",
 };
 
+function roleLabel(role) {
+  if (typeof t === "function") return t(`role.${role}`, ROLE_LABELS[role] || role);
+  return ROLE_LABELS[role] || role;
+}
+
 function renderNav() {
   const user = getUser();
   if (!user) return;
@@ -26,8 +33,9 @@ function renderNav() {
   if (!mount) return;
 
   const current = location.pathname;
+  const tr = typeof t === "function" ? t : (key, fallback) => fallback || key;
   const links = NAV_LINKS.filter((l) => l.roles.includes(user.role))
-    .map((l) => `<a href="${l.href}" class="${current === l.href ? "active" : ""}">${l.label}</a>`)
+    .map((l) => `<a href="${l.href}" class="${current === l.href ? "active" : ""}" data-i18n="${l.key}">${tr(l.key)}</a>`)
     .join("");
 
   mount.innerHTML = `
@@ -36,9 +44,9 @@ function renderNav() {
       <nav>${links}</nav>
       <div class="userbox">
         <span>${user.name}</span>
-        <span class="badge-role">${ROLE_LABELS[user.role] || user.role}</span>
-        <button class="btn btn-ghost btn-sm" id="change-password-btn">Cambiar contraseña</button>
-        <button class="btn btn-ghost btn-sm" id="logout-btn">Salir</button>
+        <span class="badge-role">${roleLabel(user.role)}</span>
+        <button class="btn btn-ghost btn-sm" id="change-password-btn" data-i18n="btn.changePassword">${tr("btn.changePassword")}</button>
+        <button class="btn btn-ghost btn-sm" id="logout-btn" data-i18n="btn.logout">${tr("btn.logout")}</button>
       </div>
     </div>
   `;
