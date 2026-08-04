@@ -1,71 +1,14 @@
-const ExcelJS = require("exceljs");
+const XLSX = require("xlsx");
 
-// Parsea un archivo .xlsx o .csv (recibido como base64 desde el frontend) y lo
+// Parsea un archivo .xls (formato binario viejo de Excel, el que exporta Fudo
+// por defecto), .xlsx o .csv (recibido como base64 desde el frontend) y lo
 // normaliza a una lista de "hojas" con encabezados + filas, para que el resto
 // del importador no tenga que preocuparse por el formato de origen.
 //
-// Sirve tanto para exports de Fudo (que suelen venir en .xlsx, a veces con
-// varias hojas) como de cualquier otro sistema que permita exportar a Excel o
-// CSV (la mayoría de los POS de gestión de restaurantes lo permiten).
-
-function parseCsv(text) {
-  // Parser CSV manual (sin dependencias): soporta campos entre comillas con
-  // comas y saltos de línea adentro, y comillas escapadas ("").
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-  let i = 0;
-  const len = text.length;
-  while (i < len) {
-    const char = text[i];
-    if (inQuotes) {
-      if (char === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        inQuotes = false;
-        i += 1;
-        continue;
-      }
-      field += char;
-      i += 1;
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = true;
-      i += 1;
-      continue;
-    }
-    if (char === ",") {
-      row.push(field);
-      field = "";
-      i += 1;
-      continue;
-    }
-    if (char === "\r") {
-      i += 1;
-      continue;
-    }
-    if (char === "\n") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      i += 1;
-      continue;
-    }
-    field += char;
-    i += 1;
-  }
-  if (field.length > 0 || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((cell) => String(cell || "").trim() !== ""));
-}
+// Se usa SheetJS (paquete "xlsx") en vez de ExcelJS porque además del .xlsx
+// moderno necesitamos poder leer el .xls binario viejo (formato BIFF/OLE2)
+// que es el que efectivamente descarga Fudo al exportar productos — ExcelJS
+// solo entiende .xlsx.
 
 function sheetFromMatrix(name, matrix) {
   const headerRow = matrix[0] || [];
@@ -75,7 +18,7 @@ function sheetFromMatrix(name, matrix) {
     headers.forEach((h, idx) => {
       if (!h) return;
       const raw = r[idx];
-      obj[h] = raw == null ? "" : typeof raw === "object" && raw.text ? raw.text : raw;
+      obj[h] = raw == null ? "" : raw;
     });
     return obj;
   });
@@ -84,37 +27,28 @@ function sheetFromMatrix(name, matrix) {
 
 async function parseWorkbookBase64(base64, fileName = "") {
   const buffer = Buffer.from(base64, "base64");
-  const isCsv = /\.csv$/i.test(fileName) || (!/\.xlsx?$/i.test(fileName) && looksLikeCsv(buffer));
 
-  if (isCsv) {
-    const text = buffer.toString("utf8");
-    const matrix = parseCsv(text);
-    if (matrix.length === 0) {
-      throw Object.assign(new Error("El archivo CSV está vacío o no se pudo leer."), { status: 400 });
-    }
-    return { sheets: [sheetFromMatrix("Hoja 1", matrix)] };
-  }
-
-  const workbook = new ExcelJS.Workbook();
+  let workbook;
   try {
-    await workbook.xlsx.load(buffer);
+    // raw:true evita que SheetJS formatee números/fechas como texto (por
+    // ejemplo precios), así el resto del importador recibe los valores
+    // numéricos ya limpios en vez de strings formateados según la config
+    // regional de la planilla de origen.
+    workbook = XLSX.read(buffer, { type: "buffer", raw: true, cellDates: false });
   } catch (err) {
     throw Object.assign(
-      new Error("No se pudo leer el archivo. Verificá que sea un .xlsx o .csv válido."),
+      new Error("No se pudo leer el archivo. Verificá que sea un .xls, .xlsx o .csv válido."),
       { status: 400 }
     );
   }
 
   const sheets = [];
-  workbook.eachSheet((worksheet) => {
-    const matrix = [];
-    worksheet.eachRow({ includeEmpty: false }, (row) => {
-      const values = row.values.slice(1); // ExcelJS antepone un índice vacío en la posición 0
-      matrix.push(values.map((v) => (v && typeof v === "object" && "text" in v ? v.text : v)));
-    });
-    if (matrix.length === 0) return;
-    sheets.push(sheetFromMatrix(worksheet.name, matrix));
-  });
+  for (const sheetName of workbook.SheetNames) {
+    const worksheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: "", blankrows: false });
+    if (!matrix || matrix.length === 0) continue;
+    sheets.push(sheetFromMatrix(sheetName, matrix));
+  }
 
   if (sheets.length === 0) {
     throw Object.assign(new Error("El archivo no tiene ninguna hoja con datos."), { status: 400 });
@@ -122,12 +56,4 @@ async function parseWorkbookBase64(base64, fileName = "") {
   return { sheets };
 }
 
-function looksLikeCsv(buffer) {
-  // Heurística simple: si arranca con "PK" es un .xlsx (es un zip). Si no, y
-  // tiene comas/saltos de línea en los primeros bytes, lo tratamos como CSV.
-  const head = buffer.slice(0, 4).toString("utf8");
-  if (buffer.slice(0, 2).toString("hex") === "504b") return false; // "PK"
-  return true;
-}
-
-module.exports = { parseWorkbookBase64, parseCsv };
+module.exports = { parseWorkbookBase64 };
