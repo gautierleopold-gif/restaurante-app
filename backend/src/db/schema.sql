@@ -76,6 +76,10 @@ ALTER TABLE branches ADD COLUMN IF NOT EXISTS tax_label TEXT NOT NULL DEFAULT 'I
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS resend_api_key TEXT;
 -- Idioma de la interfaz para todo el personal de la sucursal (es/fr/en/pt/it).
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'es';
+-- Símbolo de moneda a mostrar junto a cada monto en toda la interfaz (POS,
+-- ticket, caja, factura). Antes estaba fijo en "$" en el código; ahora es un
+-- parámetro más de la sucursal, editable desde Administración → Parámetros.
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS currency_symbol TEXT NOT NULL DEFAULT '$';
 
 -- Usuarios ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
@@ -407,3 +411,115 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   quantity    NUMERIC(10,2) NOT NULL DEFAULT 1,
   unit_price  NUMERIC(10,2) NOT NULL DEFAULT 0
 );
+
+-- ============================================================================
+-- Medios de pago configurables (antes era una lista fija en el código:
+-- EFECTIVO/TARJETA/TRANSFERENCIA/DIGITAL/OTRO). `code` es el valor que se
+-- guarda en payments.method (ver más abajo, ahora TEXT en vez de un enum
+-- cerrado) y `label` es el nombre que ve el usuario; se pueden desactivar o
+-- agregar nuevos (ej. "Mercado Pago") sin tocar código. Los 5 de siempre se
+-- siembran una sola vez por sucursal para no romper los pagos ya existentes.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS payment_methods (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id  UUID REFERENCES branches(id),
+  code       TEXT NOT NULL,
+  label      TEXT NOT NULL,
+  "order"    INT NOT NULL DEFAULT 0,
+  active     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_methods_branch_code
+  ON payment_methods (COALESCE(branch_id::text, ''), code);
+
+DO $$
+DECLARE b RECORD;
+BEGIN
+  FOR b IN SELECT id FROM branches LOOP
+    INSERT INTO payment_methods (branch_id, code, label, "order")
+    SELECT b.id, v.code, v.label, v.ord
+    FROM (VALUES
+      ('EFECTIVO', 'Efectivo', 1),
+      ('TARJETA', 'Tarjeta', 2),
+      ('TRANSFERENCIA', 'Transferencia', 3),
+      ('DIGITAL', 'Pago digital', 4),
+      ('OTRO', 'Otro', 5)
+    ) AS v(code, label, ord)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM payment_methods pm WHERE pm.branch_id = b.id AND pm.code = v.code
+    );
+  END LOOP;
+  -- Cubre también el caso (poco común, pero posible en este MVP de una sola
+  -- sucursal) de que todavía no exista ninguna fila en `branches`.
+  INSERT INTO payment_methods (branch_id, code, label, "order")
+  SELECT NULL, v.code, v.label, v.ord
+  FROM (VALUES
+    ('EFECTIVO', 'Efectivo', 1),
+    ('TARJETA', 'Tarjeta', 2),
+    ('TRANSFERENCIA', 'Transferencia', 3),
+    ('DIGITAL', 'Pago digital', 4),
+    ('OTRO', 'Otro', 5)
+  ) AS v(code, label, ord)
+  WHERE NOT EXISTS (SELECT 1 FROM branches)
+    AND NOT EXISTS (SELECT 1 FROM payment_methods pm WHERE pm.branch_id IS NULL AND pm.code = v.code);
+END $$;
+
+-- payments.method pasa de un enum cerrado a TEXT libre, para poder guardar
+-- cualquier código definido en payment_methods (incluidos los que agregue el
+-- usuario). Los valores ya grabados (EFECTIVO, TARJETA, etc.) son compatibles
+-- porque coinciden con los `code` sembrados arriba.
+ALTER TABLE payments ALTER COLUMN method TYPE TEXT USING method::TEXT;
+
+-- ============================================================================
+-- Motivos de descuento configurables: catálogo simple para agilizar el POS.
+-- orders.discount_reason sigue siendo texto libre (no se referencia por id),
+-- así que el motivo elegido del catálogo se guarda igual que uno tipeado a
+-- mano; la opción "Otro" en el POS sigue permitiendo texto libre siempre.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS discount_reasons (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id  UUID REFERENCES branches(id),
+  label      TEXT NOT NULL,
+  "order"    INT NOT NULL DEFAULT 0,
+  active     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_discount_reasons_branch ON discount_reasons(branch_id, "order");
+
+DO $$
+DECLARE b RECORD;
+BEGIN
+  FOR b IN SELECT id FROM branches LOOP
+    INSERT INTO discount_reasons (branch_id, label, "order")
+    SELECT b.id, v.label, v.ord
+    FROM (VALUES ('Empleados', 1), ('Cliente frecuente', 2), ('Cortesía', 3))
+      AS v(label, ord)
+    WHERE NOT EXISTS (SELECT 1 FROM discount_reasons dr WHERE dr.branch_id = b.id);
+  END LOOP;
+END $$;
+
+-- ============================================================================
+-- Movimientos de caja manuales: ingresos/egresos de efectivo que no son una
+-- venta (ej. un retiro para comprar algo en el momento, un aporte de fondo).
+-- No modifican ni bloquean nada operativo, igual que cash_closures: son solo
+-- un registro que se suma al resumen del período (ver routes/cashClosures.js).
+-- ============================================================================
+DO $$ BEGIN
+  CREATE TYPE cash_movement_type AS ENUM ('INGRESO', 'EGRESO');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS cash_movements (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id     UUID REFERENCES branches(id),
+  type          cash_movement_type NOT NULL,
+  amount        NUMERIC(10,2) NOT NULL,
+  reason        TEXT,
+  created_by_id UUID REFERENCES users(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cash_movements_branch ON cash_movements(branch_id, created_at);
+
+-- Neto de movimientos manuales incluido en el período de cada cierre, para
+-- que el historial de cierres no pierda ese dato aunque cambien los
+-- movimientos futuros.
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS manual_movements_total NUMERIC(10,2) NOT NULL DEFAULT 0;
