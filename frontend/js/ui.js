@@ -58,29 +58,30 @@ function renderNav() {
 }
 
 function openChangePasswordModal() {
+  const tr = typeof t === "function" ? t : (key, fallback) => (typeof fallback === "string" ? fallback : key);
   const overlay = showModal(`
-    <h2>Cambiar mi contraseña</h2>
-    <div class="field"><label>Contraseña actual</label><input id="cp-current" type="password" /></div>
-    <div class="field"><label>Contraseña nueva (mínimo 6 caracteres)</label><input id="cp-new" type="password" /></div>
-    <div class="field"><label>Repetir contraseña nueva</label><input id="cp-new2" type="password" /></div>
-    <button class="btn btn-primary" id="cp-save">Guardar</button>
+    <h2>${tr("ui.changePassword.title", "Cambiar mi contraseña")}</h2>
+    <div class="field"><label>${tr("ui.changePassword.currentLabel", "Contraseña actual")}</label><input id="cp-current" type="password" /></div>
+    <div class="field"><label>${tr("ui.changePassword.newLabel", "Contraseña nueva (mínimo 6 caracteres)")}</label><input id="cp-new" type="password" /></div>
+    <div class="field"><label>${tr("ui.changePassword.repeatLabel", "Repetir contraseña nueva")}</label><input id="cp-new2" type="password" /></div>
+    <button class="btn btn-primary" id="cp-save">${tr("btn.save", "Guardar")}</button>
   `);
   overlay.querySelector("#cp-save").addEventListener("click", async () => {
     const currentPassword = overlay.querySelector("#cp-current").value;
     const newPassword = overlay.querySelector("#cp-new").value;
     const newPassword2 = overlay.querySelector("#cp-new2").value;
     if (newPassword.length < 6) {
-      toast("La contraseña nueva debe tener al menos 6 caracteres.", "error");
+      toast(tr("ui.changePassword.tooShortError", "La contraseña nueva debe tener al menos 6 caracteres."), "error");
       return;
     }
     if (newPassword !== newPassword2) {
-      toast("Las contraseñas nuevas no coinciden.", "error");
+      toast(tr("ui.changePassword.mismatchError", "Las contraseñas nuevas no coinciden."), "error");
       return;
     }
     try {
       await api("/auth/me/password", { method: "POST", body: { currentPassword, newPassword } });
       closeModal(overlay);
-      toast("Contraseña actualizada.", "success");
+      toast(tr("ui.changePassword.updatedToast", "Contraseña actualizada."), "success");
     } catch (err) {
       toast(err.message, "error");
     }
@@ -101,12 +102,13 @@ function requireRole(roles) {
   const user = requireAuth();
   if (!user) return null;
   if (!roles.includes(user.role)) {
+    const tr = typeof t === "function" ? t : (key, fallback) => (typeof fallback === "string" ? fallback : key);
     document.body.innerHTML = `
       <div class="container">
         <div class="card empty-state">
-          <h2>Acceso restringido</h2>
-          <p>Tu rol (${ROLE_LABELS[user.role] || user.role}) no tiene acceso a esta sección.</p>
-          <a class="btn btn-primary" href="/pages/salon.html">Volver al salón</a>
+          <h2>${tr("ui.accessRestricted.title", "Acceso restringido")}</h2>
+          <p>${tr("ui.accessRestricted.text", { role: roleLabel(user.role) })}</p>
+          <a class="btn btn-primary" href="/pages/salon.html">${tr("pos.actions.backToSalonBtn", "Volver al salón")}</a>
         </div>
       </div>`;
     return null;
