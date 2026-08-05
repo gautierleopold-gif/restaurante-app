@@ -3,45 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nueva factura libre - Gestión Restaurante</title>
+  <title data-i18n="factura.pageTitle">Nueva factura libre - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
   <div id="app-nav"></div>
   <div class="container">
     <div class="flex-between mb16">
-      <h2 style="margin:0">Nueva factura libre</h2>
-      <a href="/pages/pedidos.html" class="btn">← Volver a pedidos</a>
+      <h2 style="margin:0" data-i18n="factura.title">Nueva factura libre</h2>
+      <a href="/pages/pedidos.html" class="btn" data-i18n="factura.backToOrders">← Volver a pedidos</a>
     </div>
-    <p class="small muted">Para emitir un comprobante que no está ligado a un pedido del POS (por ejemplo, si hay un problema técnico con el pedido): elegí manualmente qué poner adentro.</p>
+    <p class="small muted" data-i18n="factura.helpText">Para emitir un comprobante que no está ligado a un pedido del POS (por ejemplo, si hay un problema técnico con el pedido): elegí manualmente qué poner adentro.</p>
 
     <div class="card mb16">
-      <h3 style="margin-top:0">Cliente</h3>
+      <h3 style="margin-top:0" data-i18n="factura.customerSection">Cliente</h3>
       <div class="grid grid-2">
-        <div class="field"><label>Nombre / razón social</label><input id="fi-name" /></div>
-        <div class="field"><label>NIT / identificación fiscal (opcional)</label><input id="fi-taxid" /></div>
+        <div class="field"><label data-i18n="factura.nameLabel">Nombre / razón social</label><input id="fi-name" /></div>
+        <div class="field"><label data-i18n="factura.taxIdLabel">NIT / identificación fiscal (opcional)</label><input id="fi-taxid" /></div>
       </div>
-      <div class="field"><label>Email (opcional, para poder enviarla por mail)</label><input id="fi-email" type="email" /></div>
+      <div class="field"><label data-i18n="factura.emailLabel">Email (opcional, para poder enviarla por mail)</label><input id="fi-email" type="email" /></div>
     </div>
 
     <div class="card mb16">
-      <h3 style="margin-top:0">Ítems</h3>
+      <h3 style="margin-top:0" data-i18n="factura.itemsSection">Ítems</h3>
       <table>
-        <thead><tr><th>Descripción</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th><th></th></tr></thead>
+        <thead><tr><th data-i18n="factura.colDescription">Descripción</th><th data-i18n="factura.colQuantity">Cantidad</th><th data-i18n="factura.colUnitPrice">Precio unitario</th><th data-i18n="common.subtotal">Subtotal</th><th></th></tr></thead>
         <tbody id="items-body"></tbody>
       </table>
-      <button class="btn btn-sm mt16" id="add-row">+ Agregar ítem</button>
+      <button class="btn btn-sm mt16" id="add-row" data-i18n="factura.addItem">+ Agregar ítem</button>
       <div class="mt16" id="totals-preview"></div>
     </div>
 
-    <button class="btn btn-primary" id="issue-btn">Emitir factura</button>
+    <button class="btn btn-primary" id="issue-btn" data-i18n="factura.issueBtn">Emitir factura</button>
 
     <div class="card mt16" id="result-card" style="display:none"></div>
 
     <div class="card mt16">
-      <h3 style="margin-top:0">Historial de facturas libres</h3>
+      <h3 style="margin-top:0" data-i18n="factura.historyTitle">Historial de facturas libres</h3>
       <table>
-        <thead><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Total</th><th></th></tr></thead>
+        <thead><tr><th data-i18n="factura.colNumber">Número</th><th data-i18n="factura.colDate">Fecha</th><th data-i18n="factura.colCustomer">Cliente</th><th data-i18n="common.total">Total</th><th></th></tr></thead>
         <tbody id="history-body"></tbody>
       </table>
     </div>
@@ -61,13 +61,14 @@
         rowCount++;
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td><input class="fi-desc" placeholder="Ej: Consumición varios" /></td>
+          <td><input class="fi-desc" data-i18n-placeholder="factura.descPlaceholder" placeholder="Ej: Consumición varios" /></td>
           <td><input class="fi-qty" type="number" value="1" min="0.01" step="0.01" style="width:80px" /></td>
           <td><input class="fi-price" type="number" value="0" min="0" step="0.01" style="width:110px" /></td>
           <td class="fi-line-total small muted">$0,00</td>
           <td><button class="btn btn-sm btn-danger" data-remove-row>x</button></td>
         `;
         document.getElementById("items-body").appendChild(tr);
+        applyTranslations(tr);
         tr.querySelectorAll("input").forEach((inp) => inp.addEventListener("input", updateTotals));
         tr.querySelector("[data-remove-row]").addEventListener("click", () => {
           tr.remove();
@@ -96,9 +97,9 @@
           taxAmount = subtotal * (taxRate / (100 + taxRate));
         }
         document.getElementById("totals-preview").innerHTML = `
-          <div class="ticket-total-row"><span>Subtotal</span><span>$${money(subtotal)}</span></div>
-          ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch.taxLabel || "IVA"}${taxMode === "INCLUSIVE" ? " (incluido)" : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
-          <div class="ticket-total-row grand"><span>Total</span><span>$${money(total)}</span></div>
+          <div class="ticket-total-row"><span>${t("common.subtotal", "Subtotal")}</span><span>$${money(subtotal)}</span></div>
+          ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch.taxLabel || t("pos.ticket.taxLabelFallback", "IVA")}${taxMode === "INCLUSIVE" ? ` (${t("factura.taxIncluded", "incluido")})` : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
+          <div class="ticket-total-row grand"><span>${t("common.total", "Total")}</span><span>$${money(total)}</span></div>
         `;
       }
 
@@ -113,7 +114,7 @@
           }))
           .filter((it) => it.description && it.quantity > 0);
         if (items.length === 0) {
-          toast("Agregá al menos un ítem con descripción y cantidad.", "error");
+          toast(t("factura.itemValidationError", "Agregá al menos un ítem con descripción y cantidad."), "error");
           return;
         }
         try {
@@ -130,15 +131,15 @@
           const card = document.getElementById("result-card");
           card.style.display = "block";
           card.innerHTML = `
-            <h3 style="margin-top:0">Factura ${inv.number} emitida</h3>
+            <h3 style="margin-top:0">${t("factura.invoiceIssuedTitle", { number: inv.number })}</h3>
             <div class="flex-gap">
-              <button class="btn btn-sm" id="dl-pdf">Descargar PDF</button>
-              <button class="btn btn-sm" id="send-mail">Enviar por mail</button>
+              <button class="btn btn-sm" id="dl-pdf">${t("pos.actions.downloadPdfBtn", "Descargar PDF")}</button>
+              <button class="btn btn-sm" id="send-mail">${t("pos.actions.emailInvoiceBtn", "Enviar por mail")}</button>
             </div>
           `;
           card.querySelector("#dl-pdf").addEventListener("click", () => downloadInvoicePdf(inv.id, inv.number));
           card.querySelector("#send-mail").addEventListener("click", () => sendInvoiceMail(inv.id));
-          toast("Factura emitida.", "success");
+          toast(t("pedidos.issueSuccess", "Factura emitida."), "success");
           document.getElementById("items-body").innerHTML = "";
           addRow();
           document.getElementById("fi-name").value = "";
@@ -155,7 +156,7 @@
           const res = await fetch(`/api/free-invoices/${id}/pdf`, {
             headers: { Authorization: `Bearer ${getToken()}` },
           });
-          if (!res.ok) throw new Error("No se pudo descargar la factura.");
+          if (!res.ok) throw new Error(t("pedidos.downloadError", "No se pudo descargar la factura."));
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -171,11 +172,11 @@
       }
 
       async function sendInvoiceMail(id) {
-        const email = prompt("Enviar factura al email:");
+        const email = prompt(t("pos.actions.emailInvoicePrompt", "Enviar factura al email:"));
         if (!email) return;
         try {
           await api(`/free-invoices/${id}/email`, { method: "POST", body: { email } });
-          toast("Factura enviada por mail.", "success");
+          toast(t("pos.actions.invoiceEmailedToast", "Factura enviada por mail."), "success");
         } catch (err) {
           toast(err.message, "error");
         }
@@ -185,7 +186,7 @@
         const data = await api("/free-invoices");
         const body = document.getElementById("history-body");
         if (data.invoices.length === 0) {
-          body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Todavía no se emitió ninguna factura libre.</td></tr>`;
+          body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">${t("factura.noHistoryYet", "Todavía no se emitió ninguna factura libre.")}</td></tr>`;
           return;
         }
         body.innerHTML = data.invoices
@@ -193,10 +194,10 @@
             (inv) => `
           <tr>
             <td>${inv.number}</td>
-            <td>${new Date(inv.created_at).toLocaleString("es-AR")}</td>
-            <td>${inv.customer_name || "Consumidor final"}</td>
+            <td>${fmtDateTime(inv.created_at)}</td>
+            <td>${inv.customer_name || t("factura.finalConsumer", "Consumidor final")}</td>
             <td>$${money(inv.total)}</td>
-            <td><button class="btn btn-sm" data-history-pdf="${inv.id}" data-number="${inv.number}">PDF</button></td>
+            <td><button class="btn btn-sm" data-history-pdf="${inv.id}" data-number="${inv.number}">${t("pedidos.pdfBtn", "PDF")}</button></td>
           </tr>`
           )
           .join("");

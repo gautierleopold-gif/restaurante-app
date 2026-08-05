@@ -14,29 +14,29 @@
     </div>
 
     <div class="card mb16">
-      <h3 style="margin-top:0">Resumen del período abierto</h3>
-      <p class="small muted">Desde el último cierre (o desde el principio, si todavía no hiciste ninguno) hasta este momento. Al confirmar, se guarda este resumen como el cierre del día y arranca un período nuevo.</p>
+      <h3 style="margin-top:0" data-i18n="caja.summaryTitle">Resumen del período abierto</h3>
+      <p class="small muted" data-i18n="caja.summaryHelp">Desde el último cierre (o desde el principio, si todavía no hiciste ninguno) hasta este momento. Al confirmar, se guarda este resumen como el cierre del día y arranca un período nuevo.</p>
       <div id="preview-summary"></div>
-      <button class="btn btn-primary" id="close-cash-btn">Cerrar caja ahora</button>
+      <button class="btn btn-primary" id="close-cash-btn" data-i18n="page.caja.closeBtn">Cerrar caja ahora</button>
     </div>
 
     <div class="card mb16">
       <h3 style="margin-top:0" data-i18n="page.caja.tipsTitle">Cuenta de propinas</h3>
-      <p class="small muted">Lo que se paga de más sobre el total de un pedido (por ejemplo, pagar $1000 por una cuenta de $950) se acredita automáticamente acá, como propina. También se puede agregar una propina manualmente en cualquier momento.</p>
+      <p class="small muted" data-i18n="caja.tipsHelp">Lo que se paga de más sobre el total de un pedido (por ejemplo, pagar $1000 por una cuenta de $950) se acredita automáticamente acá, como propina. También se puede agregar una propina manualmente en cualquier momento.</p>
       <div class="flex-between mb8">
-        <div><span class="small muted">Saldo disponible</span><br /><strong id="tips-balance" style="font-size:1.4rem">$0,00</strong></div>
+        <div><span class="small muted" data-i18n="caja.tipsBalanceLabel">Saldo disponible</span><br /><strong id="tips-balance" style="font-size:1.4rem">$0,00</strong></div>
         <div class="flex-gap" id="tips-actions"></div>
       </div>
       <table>
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Pedido</th><th>Registrado por</th><th>Notas</th></tr></thead>
+        <thead><tr><th data-i18n="caja.col.date">Fecha</th><th data-i18n="caja.col.type">Tipo</th><th data-i18n="caja.col.amount">Monto</th><th data-i18n="caja.col.order">Pedido</th><th data-i18n="caja.col.registeredBy">Registrado por</th><th data-i18n="caja.col.notes">Notas</th></tr></thead>
         <tbody id="tips-body"></tbody>
       </table>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0">Historial de cierres</h3>
+      <h3 style="margin-top:0" data-i18n="caja.historyTitle">Historial de cierres</h3>
       <table>
-        <thead><tr><th>Cerrado</th><th>Período</th><th>Pedidos</th><th>Ventas totales</th><th>Por medio de pago</th><th>Cerrado por</th></tr></thead>
+        <thead><tr><th data-i18n="caja.col.closedAt">Cerrado</th><th data-i18n="caja.col.period">Período</th><th data-i18n="caja.col.orders">Pedidos</th><th data-i18n="caja.col.totalSales">Ventas totales</th><th data-i18n="caja.col.byMethod">Por medio de pago</th><th data-i18n="caja.col.closedBy">Cerrado por</th></tr></thead>
         <tbody id="closures-body"></tbody>
       </table>
     </div>
@@ -51,13 +51,13 @@
       renderNav();
 
       function fmtDate(d) {
-        return new Date(d).toLocaleString("es-AR");
+        return fmtDateTime(d);
       }
 
       function methodsSummary(obj) {
         const entries = Object.entries(obj || {});
         if (entries.length === 0) return "-";
-        return entries.map(([m, v]) => `${m}: $${money(v)}`).join(" · ");
+        return entries.map(([m, v]) => `${t("pos.payMethod." + m, m)}: $${money(v)}`).join(" · ");
       }
 
       async function loadPreview() {
@@ -66,17 +66,17 @@
           const data = await api("/cash-closures/preview");
           el.innerHTML = `
             <div class="grid grid-2">
-              <div><span class="small muted">Desde</span><br />${fmtDate(data.periodFrom)}</div>
-              <div><span class="small muted">Hasta (ahora)</span><br />${fmtDate(data.periodTo)}</div>
+              <div><span class="small muted">${t("caja.summary.fromLabel", "Desde")}</span><br />${fmtDate(data.periodFrom)}</div>
+              <div><span class="small muted">${t("caja.summary.toLabel", "Hasta (ahora)")}</span><br />${fmtDate(data.periodTo)}</div>
             </div>
             <div class="mt16 grid grid-2">
-              <div><span class="small muted">Pedidos cerrados</span><br /><strong>${data.orderCount}</strong></div>
-              <div><span class="small muted">Ventas totales</span><br /><strong>$${money(data.totalSales)}</strong></div>
+              <div><span class="small muted">${t("caja.summary.orderCountLabel", "Pedidos cerrados")}</span><br /><strong>${data.orderCount}</strong></div>
+              <div><span class="small muted">${t("caja.summary.totalSalesLabel", "Ventas totales")}</span><br /><strong>$${money(data.totalSales)}</strong></div>
             </div>
-            <div class="mt16"><span class="small muted">Por medio de pago</span><br />${methodsSummary(data.totalsByMethod)}</div>
+            <div class="mt16"><span class="small muted">${t("caja.summary.byMethodLabel", "Por medio de pago")}</span><br />${methodsSummary(data.totalsByMethod)}</div>
           `;
         } catch (err) {
-          el.innerHTML = `<p class="small muted">No se pudo calcular el resumen: ${err.message}</p>`;
+          el.innerHTML = `<p class="small muted">${t("caja.summary.error", "No se pudo calcular el resumen: {message}", { message: err.message })}</p>`;
         }
       }
 
@@ -84,7 +84,7 @@
         const data = await api("/cash-closures");
         const body = document.getElementById("closures-body");
         if (data.closures.length === 0) {
-          body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">Todavía no se hizo ningún cierre.</td></tr>`;
+          body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">${t("caja.noClosuresYet", "Todavía no se hizo ningún cierre.")}</td></tr>`;
           return;
         }
         body.innerHTML = data.closures
@@ -103,10 +103,10 @@
       }
 
       document.getElementById("close-cash-btn").addEventListener("click", async () => {
-        if (!confirm("¿Confirmás el cierre de caja? Se va a guardar el resumen del período actual y arrancar uno nuevo.")) return;
+        if (!confirm(t("caja.confirmClose", "¿Confirmás el cierre de caja? Se va a guardar el resumen del período actual y arrancar uno nuevo."))) return;
         try {
           await api("/cash-closures", { method: "POST" });
-          toast("Caja cerrada.", "success");
+          toast(t("caja.closedToast", "Caja cerrada."), "success");
           await Promise.all([loadPreview(), loadHistory()]);
         } catch (err) {
           toast(err.message, "error");
@@ -119,7 +119,11 @@
       const canManageTips = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
 
       function tipTypeLabel(type) {
-        return { AUTO_OVERPAYMENT: "Sobrepago automático", MANUAL_ADD: "Agregado manual", RESET: "Reinicio" }[type] || type;
+        return {
+          AUTO_OVERPAYMENT: t("caja.tipType.AUTO_OVERPAYMENT", "Sobrepago automático"),
+          MANUAL_ADD: t("caja.tipType.MANUAL_ADD", "Agregado manual"),
+          RESET: t("caja.tipType.RESET", "Reinicio"),
+        }[type] || type;
       }
 
       async function loadTips() {
@@ -133,7 +137,7 @@
             : "";
           const body = document.getElementById("tips-body");
           if (data.transactions.length === 0) {
-            body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Todavía no hay movimientos.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">${t("caja.noTipMovements", "Todavía no hay movimientos.")}</td></tr>`;
           } else {
             body.innerHTML = data.transactions
               .map(
@@ -152,9 +156,9 @@
             document.getElementById("tips-add-btn").addEventListener("click", () => {
               const overlay = showModal(`
                 <h2 data-i18n="page.caja.tipsAdd">${t("page.caja.tipsAdd")}</h2>
-                <div class="field"><label>Monto</label><input id="tip-add-amount" type="number" step="0.01" min="0.01" /></div>
-                <div class="field"><label>Notas (opcional)</label><input id="tip-add-notes" /></div>
-                <button class="btn btn-primary" id="tip-add-save">Guardar</button>
+                <div class="field"><label>${t("common.amount", "Monto")}</label><input id="tip-add-amount" type="number" step="0.01" min="0.01" /></div>
+                <div class="field"><label>${t("caja.notesOptionalLabel", "Notas (opcional)")}</label><input id="tip-add-notes" /></div>
+                <button class="btn btn-primary" id="tip-add-save">${t("btn.save", "Guardar")}</button>
               `);
               overlay.querySelector("#tip-add-save").addEventListener("click", async () => {
                 try {
@@ -163,17 +167,17 @@
                     notes: overlay.querySelector("#tip-add-notes").value || null,
                   }});
                   closeModal(overlay);
-                  toast("Propina agregada.", "success");
+                  toast(t("caja.tipAddedToast", "Propina agregada."), "success");
                   await loadTips();
                 } catch (err) { toast(err.message, "error"); }
               });
             });
             document.getElementById("tips-reset-btn").addEventListener("click", async () => {
-              if (!confirm("¿Reiniciar la cuenta de propinas? El saldo actual queda en $0 (se conserva el historial).")) return;
-              const notes = prompt("Notas sobre este reinicio (opcional, ej. \"reparto entre el personal\"):", "") || null;
+              if (!confirm(t("caja.confirmResetTips", "¿Reiniciar la cuenta de propinas? El saldo actual queda en $0 (se conserva el historial)."))) return;
+              const notes = prompt(t("caja.resetTipsNotesPrompt", 'Notas sobre este reinicio (opcional, ej. "reparto entre el personal"):'), "") || null;
               try {
                 await api("/tips/reset", { method: "POST", body: { notes } });
-                toast("Cuenta de propinas reiniciada.", "success");
+                toast(t("caja.tipsResetToast", "Cuenta de propinas reiniciada."), "success");
                 await loadTips();
               } catch (err) { toast(err.message, "error"); }
             });

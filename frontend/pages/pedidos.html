@@ -12,19 +12,19 @@
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="page.pedidos.title">Pedidos</h2>
       <div class="flex-gap">
-        <a href="/pages/factura-libre.html" class="btn">+ Nueva factura libre</a>
-        <a href="/pages/pos.html?new=1" class="btn btn-primary">+ Retiro / Delivery</a>
+        <a href="/pages/factura-libre.html" class="btn" data-i18n="pedidos.newFreeInvoiceBtn">+ Nueva factura libre</a>
+        <a href="/pages/pos.html?new=1" class="btn btn-primary" data-i18n="pedidos.newRetiroDeliveryBtn">+ Retiro / Delivery</a>
       </div>
     </div>
     <div class="tabs" id="status-tabs">
-      <button data-status="ABIERTO" class="active">Abiertos</button>
-      <button data-status="CERRADO">Cerrados</button>
-      <button data-status="CANCELADO">Cancelados</button>
+      <button data-status="ABIERTO" class="active" data-i18n="pedidos.tab.abiertos">Abiertos</button>
+      <button data-status="CERRADO" data-i18n="pedidos.tab.cerrados">Cerrados</button>
+      <button data-status="CANCELADO" data-i18n="pedidos.tab.cancelados">Cancelados</button>
     </div>
     <div class="card">
       <table>
         <thead>
-          <tr><th>#</th><th>Tipo</th><th>Mesa / Cliente</th><th>Mozo</th><th>Total</th><th>Estado</th><th>Factura</th><th></th></tr>
+          <tr><th>#</th><th data-i18n="pedidos.col.type">Tipo</th><th data-i18n="pedidos.col.tableCustomer">Mesa / Cliente</th><th data-i18n="pedidos.col.waiter">Mozo</th><th data-i18n="common.total">Total</th><th data-i18n="common.status">Estado</th><th data-i18n="pedidos.col.invoice">Factura</th><th></th></tr>
         </thead>
         <tbody id="orders-body"></tbody>
       </table>
@@ -45,13 +45,21 @@
       if (freeInvoiceLink) freeInvoiceLink.style.display = "none";
     }
 
-    function typeLabel(t) { return { SALON: "Salón", RETIRO: "Retiro", DELIVERY: "Delivery" }[t] || t; }
+    function typeLabel(type) {
+      return (
+        {
+          SALON: t("pedidos.typeLabel.SALON", "Salón"),
+          RETIRO: t("pedidos.typeLabel.RETIRO", "Retiro"),
+          DELIVERY: t("pedidos.typeLabel.DELIVERY", "Delivery"),
+        }[type] || type
+      );
+    }
 
     async function load() {
       const data = await api(`/orders?status=${currentStatus}`);
       const body = document.getElementById("orders-body");
       if (data.orders.length === 0) {
-        body.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">No hay pedidos en este estado.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">${t("pedidos.emptyState", "No hay pedidos en este estado.")}</td></tr>`;
         return;
       }
       body.innerHTML = data.orders
@@ -63,9 +71,9 @@
           <td>${o.table_name || o.customer_name || "-"}</td>
           <td>${o.waiter_name || "-"}</td>
           <td>$${money(o.total)}</td>
-          <td><span class="pill pill-${o.status === "ABIERTO" ? "ocupada" : o.status === "CERRADO" ? "libre" : "pendiente_pago"}">${o.status}</span></td>
+          <td><span class="pill pill-${o.status === "ABIERTO" ? "ocupada" : o.status === "CERRADO" ? "libre" : "pendiente_pago"}">${t("order.status." + o.status, o.status)}</span></td>
           <td>${invoiceCell(o)}</td>
-          <td><a class="btn btn-sm" href="/pages/pos.html?orderId=${o.id}">Ver</a></td>
+          <td><a class="btn btn-sm" href="/pages/pos.html?orderId=${o.id}">${t("pedidos.viewBtn", "Ver")}</a></td>
         </tr>`
         )
         .join("");
@@ -80,11 +88,11 @@
     function invoiceCell(o) {
       if (o.status !== "CERRADO" || !canInvoice) return `<span class="small muted">-</span>`;
       if (!o.invoice_id) {
-        return `<button class="btn btn-sm btn-primary" data-issue-invoice="${o.id}" data-code="${o.code}" data-customer="${(o.customer_name || "").replace(/"/g, "&quot;")}">Facturar</button>`;
+        return `<button class="btn btn-sm btn-primary" data-issue-invoice="${o.id}" data-code="${o.code}" data-customer="${(o.customer_name || "").replace(/"/g, "&quot;")}">${t("pedidos.invoiceBtn", "Facturar")}</button>`;
       }
       return `<span class="flex-gap">
         <span class="small muted">${o.invoice_number}</span>
-        <button class="btn btn-sm" data-download-invoice="${o.id}" data-number="${o.invoice_number}">PDF</button>
+        <button class="btn btn-sm" data-download-invoice="${o.id}" data-number="${o.invoice_number}">${t("pedidos.pdfBtn", "PDF")}</button>
       </span>`;
     }
 
@@ -98,7 +106,7 @@
             const res = await fetch(`/api/orders/${btn.dataset.downloadInvoice}/invoice/pdf`, {
               headers: { Authorization: `Bearer ${getToken()}` },
             });
-            if (!res.ok) throw new Error("No se pudo descargar la factura.");
+            if (!res.ok) throw new Error(t("pedidos.downloadError", "No se pudo descargar la factura."));
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -117,12 +125,12 @@
 
     function openIssueInvoiceModal(orderId, code, customerName) {
       const overlay = showModal(`
-        <h2>Emitir factura del pedido #${code}</h2>
-        <p class="small muted">Se genera con el próximo número correlativo configurado en Administración → Parámetros.</p>
-        <div class="field"><label>Nombre / razón social del cliente</label><input id="inv-name" value="${customerName || ""}" /></div>
-        <div class="field"><label>NIT / identificación fiscal del cliente (opcional)</label><input id="inv-taxid" /></div>
-        <div class="field"><label>Email del cliente (opcional, para poder enviarla por mail)</label><input id="inv-email" type="email" /></div>
-        <button class="btn btn-primary" id="confirm-issue-invoice">Emitir factura</button>
+        <h2>${t("pedidos.issueModal.title", { code })}</h2>
+        <p class="small muted">${t("pedidos.issueModal.hint", "Se genera con el próximo número correlativo configurado en Administración → Parámetros.")}</p>
+        <div class="field"><label>${t("pedidos.issueModal.nameLabel", "Nombre / razón social del cliente")}</label><input id="inv-name" value="${customerName || ""}" /></div>
+        <div class="field"><label>${t("pedidos.issueModal.taxIdLabel", "NIT / identificación fiscal del cliente (opcional)")}</label><input id="inv-taxid" /></div>
+        <div class="field"><label>${t("pedidos.issueModal.emailLabel", "Email del cliente (opcional, para poder enviarla por mail)")}</label><input id="inv-email" type="email" /></div>
+        <button class="btn btn-primary" id="confirm-issue-invoice">${t("pedidos.issueModal.confirmBtn", "Emitir factura")}</button>
       `);
       overlay.querySelector("#confirm-issue-invoice").addEventListener("click", async () => {
         try {
@@ -135,7 +143,7 @@
             },
           });
           closeModal(overlay);
-          toast("Factura emitida.", "success");
+          toast(t("pedidos.issueSuccess", "Factura emitida."), "success");
           load();
         } catch (err) {
           toast(err.message, "error");

@@ -28,16 +28,16 @@
 <body>
   <div id="app-nav"></div>
   <div class="container">
-    <h2 class="mb16">Importar menú (Fudo u otro sistema)</h2>
+    <h2 class="mb16" data-i18n="importar.title">Importar menú (Fudo u otro sistema)</h2>
 
     <div class="card mb16">
-      <p class="small muted">
+      <p class="small muted" data-i18n="importar.helpText">
         Subí el archivo Excel (.xlsx) o CSV que exportaste de Fudo o de cualquier otro sistema de gestión.
         La app va a proponer automáticamente a qué campo corresponde cada columna de tu archivo (podés corregirlo
         antes de importar). No hace falta que el archivo tenga un formato exacto: vos elegís las columnas.
       </p>
       <div class="field">
-        <label>Archivo (.xlsx o .csv)</label>
+        <label data-i18n="importar.fileLabel">Archivo (.xlsx o .csv)</label>
         <input type="file" id="file-input" accept=".xlsx,.csv" />
       </div>
       <div id="upload-status" class="small muted"></div>
@@ -46,49 +46,49 @@
     <div id="sections" class="section-disabled">
       <!-- 1. Categorías y productos -->
       <div class="card mb16">
-        <div class="import-step"><span class="badge-step">1</span><h3 style="margin:0">Categorías y productos</h3></div>
-        <p class="small muted">Obligatorio. Crea las categorías que falten y los productos con su precio. Si un producto ya existe (misma categoría y nombre), se actualiza en vez de duplicarse.</p>
+        <div class="import-step"><span class="badge-step">1</span><h3 style="margin:0" data-i18n="importar.section1Title">Categorías y productos</h3></div>
+        <p class="small muted" data-i18n="importar.section1Desc">Obligatorio. Crea las categorías que falten y los productos con su precio. Si un producto ya existe (misma categoría y nombre), se actualiza en vez de duplicarse.</p>
         <div class="sheet-picker">
-          <label class="small muted">Hoja del archivo</label>
+          <label class="small muted" data-i18n="importar.sheetLabel">Hoja del archivo</label>
           <select id="productos-sheet"></select>
         </div>
         <table class="mapping-table" id="productos-mapping"></table>
-        <div class="small muted">Vista previa (primeras filas mapeadas):</div>
+        <div class="small muted" data-i18n="importar.previewMapped">Vista previa (primeras filas mapeadas):</div>
         <div style="overflow-x:auto"><table class="preview-table" id="productos-preview"></table></div>
-        <button class="btn btn-primary mt16" id="productos-commit">Importar productos y categorías</button>
+        <button class="btn btn-primary mt16" id="productos-commit" data-i18n="importar.commitProducts">Importar productos y categorías</button>
         <div id="productos-summary"></div>
       </div>
 
       <!-- 2. Variantes -->
       <div class="card mb16">
-        <div class="import-step"><span class="badge-step">2</span><h3 style="margin:0">Variantes (opcional)</h3></div>
-        <p class="small muted">Para productos con tamaños/variantes con precio propio (ej. "Chico"/"Grande"). El producto tiene que existir ya (importalo en el paso 1 primero).</p>
+        <div class="import-step"><span class="badge-step">2</span><h3 style="margin:0" data-i18n="importar.section2Title">Variantes (opcional)</h3></div>
+        <p class="small muted" data-i18n="importar.section2Desc">Para productos con tamaños/variantes con precio propio (ej. "Chico"/"Grande"). El producto tiene que existir ya (importalo en el paso 1 primero).</p>
         <div class="sheet-picker">
-          <label class="small muted">Hoja del archivo</label>
+          <label class="small muted" data-i18n="importar.sheetLabel">Hoja del archivo</label>
           <select id="variantes-sheet"></select>
         </div>
         <table class="mapping-table" id="variantes-mapping"></table>
-        <div class="small muted">Vista previa:</div>
+        <div class="small muted" data-i18n="importar.preview">Vista previa:</div>
         <div style="overflow-x:auto"><table class="preview-table" id="variantes-preview"></table></div>
-        <button class="btn btn-primary mt16" id="variantes-commit">Importar variantes</button>
+        <button class="btn btn-primary mt16" id="variantes-commit" data-i18n="importar.commitVariants">Importar variantes</button>
         <div id="variantes-summary"></div>
       </div>
 
       <!-- 3. Adicionales / grupos modificadores -->
       <div class="card mb16">
-        <div class="import-step"><span class="badge-step">3</span><h3 style="margin:0">Grupos de adicionales (opcional)</h3></div>
-        <p class="small muted">
+        <div class="import-step"><span class="badge-step">3</span><h3 style="margin:0" data-i18n="importar.section3Title">Grupos de adicionales (opcional)</h3></div>
+        <p class="small muted" data-i18n="importar.section3Desc">
           Una fila por opción dentro de un grupo (ej. sabores, extras). Si varios productos comparten el grupo, separalos
           con coma en "Producto(s) asociado(s)". Los productos asociados tienen que existir ya (paso 1).
         </p>
         <div class="sheet-picker">
-          <label class="small muted">Hoja del archivo</label>
+          <label class="small muted" data-i18n="importar.sheetLabel">Hoja del archivo</label>
           <select id="adicionales-sheet"></select>
         </div>
         <table class="mapping-table" id="adicionales-mapping"></table>
-        <div class="small muted">Vista previa:</div>
+        <div class="small muted" data-i18n="importar.preview">Vista previa:</div>
         <div style="overflow-x:auto"><table class="preview-table" id="adicionales-preview"></table></div>
-        <button class="btn btn-primary mt16" id="adicionales-commit">Importar grupos de adicionales</button>
+        <button class="btn btn-primary mt16" id="adicionales-commit" data-i18n="importar.commitModifiers">Importar grupos de adicionales</button>
         <div id="adicionales-summary"></div>
       </div>
     </div>
@@ -124,7 +124,7 @@
 
       function populateSheetSelect(selectEl) {
         selectEl.innerHTML = sheets
-          .map((s, i) => `<option value="${i}">${s.name} (${s.rowCount} filas)</option>`)
+          .map((s, i) => `<option value="${i}">${s.name} (${t("importar.rowsCount", { count: s.rowCount })})</option>`)
           .join("");
       }
 
@@ -135,7 +135,7 @@
         const headers = sheets[sheetIndex].headers;
 
         table.innerHTML = `
-          <thead><tr><th>Campo de la app</th><th>Columna de tu archivo</th></tr></thead>
+          <thead><tr><th>${t("importar.tableFieldApp", "Campo de la app")}</th><th>${t("importar.tableFieldColumn", "Columna de tu archivo")}</th></tr></thead>
           <tbody>
             ${defs
               .map(
@@ -144,7 +144,7 @@
                 <td class="${f.required ? "required-field" : ""}">${f.label}</td>
                 <td>
                   <select data-field="${f.key}" data-section="${sectionKey}" class="map-select">
-                    <option value="">(no usar)</option>
+                    <option value="">${t("importar.noUse", "(no usar)")}</option>
                     ${headers
                       .map(
                         (h) => `<option value="${h}" ${guess[f.key] === h ? "selected" : ""}>${h}</option>`
@@ -213,20 +213,20 @@
           const section = SECTIONS[sectionKey];
           const missing = section.requiredFields.filter((f) => !mapping[f]);
           if (missing.length > 0) {
-            toast(`Faltan mapear campos obligatorios: ${missing.join(", ")}.`, "error");
+            toast(t("importar.missingFields", { fields: missing.join(", ") }), "error");
             return;
           }
           const summaryEl = document.getElementById(`${sectionKey}-summary`);
-          summaryEl.innerHTML = `<p class="small muted">Importando...</p>`;
+          summaryEl.innerHTML = `<p class="small muted">${t("importar.importing", "Importando...")}</p>`;
           try {
             const { summary } = await api(section.endpoint, {
               method: "POST",
               body: { importToken, sheetIndex, mapping },
             });
             summaryEl.innerHTML = renderSummary(sectionKey, summary);
-            toast("Importación completada.", "success");
+            toast(t("importar.importCompleted", "Importación completada."), "success");
           } catch (err) {
-            summaryEl.innerHTML = `<p class="small muted">Error: ${err.message}</p>`;
+            summaryEl.innerHTML = `<p class="small muted">${t("importar.errorPrefix", { message: err.message })}</p>`;
             toast(err.message, "error");
           }
         });
@@ -236,31 +236,31 @@
         let lines = [];
         if (sectionKey === "productos") {
           lines = [
-            `Categorías nuevas: <strong>${s.categoriesCreated}</strong>`,
-            `Categorías reutilizadas: <strong>${s.categoriesReused}</strong>`,
-            `Productos creados: <strong>${s.productsCreated}</strong>`,
-            `Productos actualizados: <strong>${s.productsUpdated}</strong>`,
+            `${t("importar.categoriesCreated", "Categorías nuevas:")} <strong>${s.categoriesCreated}</strong>`,
+            `${t("importar.categoriesReused", "Categorías reutilizadas:")} <strong>${s.categoriesReused}</strong>`,
+            `${t("importar.productsCreated", "Productos creados:")} <strong>${s.productsCreated}</strong>`,
+            `${t("importar.productsUpdated", "Productos actualizados:")} <strong>${s.productsUpdated}</strong>`,
           ];
         } else if (sectionKey === "variantes") {
           lines = [
-            `Variantes creadas: <strong>${s.variantsCreated}</strong>`,
-            `Variantes actualizadas: <strong>${s.variantsUpdated}</strong>`,
+            `${t("importar.variantsCreated", "Variantes creadas:")} <strong>${s.variantsCreated}</strong>`,
+            `${t("importar.variantsUpdated", "Variantes actualizadas:")} <strong>${s.variantsUpdated}</strong>`,
           ];
         } else {
           lines = [
-            `Grupos nuevos: <strong>${s.groupsCreated}</strong>`,
-            `Grupos reutilizados: <strong>${s.groupsReused}</strong>`,
-            `Opciones creadas: <strong>${s.optionsCreated}</strong>`,
-            `Opciones actualizadas: <strong>${s.optionsUpdated}</strong>`,
-            `Asociaciones a productos: <strong>${s.associationsCreated}</strong>`,
+            `${t("importar.groupsCreated", "Grupos nuevos:")} <strong>${s.groupsCreated}</strong>`,
+            `${t("importar.groupsReused", "Grupos reutilizados:")} <strong>${s.groupsReused}</strong>`,
+            `${t("importar.optionsCreated", "Opciones creadas:")} <strong>${s.optionsCreated}</strong>`,
+            `${t("importar.optionsUpdated", "Opciones actualizadas:")} <strong>${s.optionsUpdated}</strong>`,
+            `${t("importar.associationsCreated", "Asociaciones a productos:")} <strong>${s.associationsCreated}</strong>`,
           ];
         }
         const errorsHtml =
           s.rowErrors && s.rowErrors.length
-            ? `<div class="row-errors"><strong>${s.rowErrors.length} fila(s) con problemas:</strong><ul>${s.rowErrors
-                .map((e) => `<li>Fila ${e.row}: ${e.error}</li>`)
+            ? `<div class="row-errors"><strong>${t("importar.rowErrorsCount", { count: s.rowErrors.length })}</strong><ul>${s.rowErrors
+                .map((e) => `<li>${t("importar.rowErrorLabel", { row: e.row })} ${e.error}</li>`)
                 .join("")}</ul></div>`
-            : `<p class="small muted mt16">Sin errores. ${s.totalRows} fila(s) procesadas.</p>`;
+            : `<p class="small muted mt16">${t("importar.noErrorsProcessed", { count: s.totalRows })}</p>`;
         return `<div class="summary-box"><div>${lines.join("<br />")}</div>${errorsHtml}</div>`;
       }
 
@@ -268,7 +268,7 @@
         const file = e.target.files[0];
         if (!file) return;
         const statusEl = document.getElementById("upload-status");
-        statusEl.textContent = "Leyendo archivo...";
+        statusEl.textContent = t("importar.readingFile", "Leyendo archivo...");
         try {
           const fileBase64 = await fileToBase64(file);
           const data = await api("/import/parse", {
@@ -280,16 +280,17 @@
           suggestedMappings = data.suggestedMappings;
           fieldDefs = data.fieldDefs;
 
-          statusEl.textContent = `Archivo leído: ${sheets.length} hoja(s), ${sheets
-            .map((s) => s.rowCount)
-            .reduce((a, b) => a + b, 0)} fila(s) en total.`;
+          statusEl.textContent = t("importar.fileReadSummary", {
+            sheets: sheets.length,
+            rows: sheets.map((s) => s.rowCount).reduce((a, b) => a + b, 0),
+          });
 
           document.getElementById("sections").classList.remove("section-disabled");
           setupSection("productos");
           setupSection("variantes");
           setupSection("adicionales");
         } catch (err) {
-          statusEl.textContent = `Error: ${err.message}`;
+          statusEl.textContent = t("importar.errorPrefix", { message: err.message });
           toast(err.message, "error");
         }
       });
