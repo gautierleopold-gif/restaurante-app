@@ -49,6 +49,7 @@
 
     let categories = [], stations = [], modifierGroups = [], products = [], rooms = [], users = [];
     let ingredients = [], permissionGroups = [], settings = null, auditLogs = [], invoiceTemplates = [];
+    let paymentMethods = [], discountReasons = [];
 
     async function loadAll() {
       const [c, s, mg, p, r] = await Promise.all([
@@ -85,6 +86,14 @@
           const tpl = await api("/invoice-templates");
           invoiceTemplates = tpl.templates;
         } catch (err) { invoiceTemplates = []; }
+        try {
+          const pm = await api("/payment-methods/all");
+          paymentMethods = pm.paymentMethods;
+        } catch (err) { paymentMethods = []; }
+        try {
+          const dr = await api("/discount-reasons/all");
+          discountReasons = dr.discountReasons;
+        } catch (err) { discountReasons = []; }
       }
     }
 
@@ -231,7 +240,7 @@
           <table><thead><tr><th data-i18n="common.name">Nombre</th><th data-i18n="common.category">Categoría</th><th data-i18n="admin.productos.station">Estación</th><th data-i18n="admin.productos.basePrice">Precio base</th><th data-i18n="common.status">Estado</th><th></th></tr></thead>
           <tbody>
             ${products.map(p => `<tr>
-              <td>${p.name}</td><td>${p.category_name || `<span class="muted small">${t("admin.productos.noCategory", "(sin categoría — no aparece en la carta)")}</span>`}</td><td>${p.station_name || "-"}</td><td>$${money(p.base_price)}</td>
+              <td>${p.name}</td><td>${p.category_name || `<span class="muted small">${t("admin.productos.noCategory", "(sin categoría — no aparece en la carta)")}</span>`}</td><td>${p.station_name || "-"}</td><td>${money(p.base_price)}</td>
               <td><span class="pill pill-${p.active ? "libre" : "pendiente_pago"}">${p.active ? t("common.active", "Activo") : t("common.inactive", "Inactivo")}</span></td>
               <td class="flex-gap">
                 <button class="btn btn-sm" data-edit-product="${p.id}">${t("btn.edit", "Editar")}</button>
@@ -738,7 +747,7 @@
                 <div class="stock-bar"><div class="stock-bar-fill ${i.low_stock ? "low" : ""}" style="width:${Math.min(100, i.min_stock > 0 ? (i.stock / (i.min_stock * 2)) * 100 : 100)}%"></div></div>
               </td>
               <td>${fmtNumber(i.min_stock)}</td>
-              <td>$${money(i.cost_per_unit)}</td>
+              <td>${money(i.cost_per_unit)}</td>
               <td class="flex-gap">
                 <button class="btn btn-sm" data-adjust-stock="${i.id}" data-name="${i.name}">${t("admin.inventario.adjustStock", "Ajustar stock")}</button>
                 <button class="btn btn-sm" data-edit-ingredient="${i.id}">${t("btn.edit", "Editar")}</button>
@@ -871,6 +880,11 @@
             <div class="field"><label>${t("admin.parametros.taxIdLabel", "NIT / identificación fiscal")}</label><input id="set-tax-id" value="${s.tax_id || ""}" /></div>
             <div class="field"><label>${t("admin.parametros.currencyLabel", "Moneda")}</label><input id="set-currency" value="${s.currency || "ARS"}" /></div>
           </div>
+          <div class="field" style="max-width:220px">
+            <label>${t("admin.parametros.currencySymbolLabel", "Símbolo de moneda")}</label>
+            <input id="set-currency-symbol" value="${s.currency_symbol || "$"}" maxlength="6" />
+            <p class="small muted" style="margin:4px 0 0">${t("admin.parametros.currencySymbolHelp", "Se muestra junto a cada monto en el POS, la caja y los tickets (ej: \"$\", \"US$\", \"€\").")}</p>
+          </div>
           <div class="field"><label>${t("admin.parametros.fiscalAddressLabel", "Dirección fiscal")}</label><input id="set-fiscal-address" value="${s.fiscal_address || ""}" /></div>
           <div class="field"><label>${t("admin.parametros.phoneLabel", "Teléfono")}</label><input id="set-phone" value="${s.phone || ""}" /></div>
           <div class="field"><label>${t("admin.parametros.invoicePrefixLabel", 'Prefijo de comprobante (ej: "A")')}</label><input id="set-invoice-prefix" value="${s.invoice_prefix || "A"}" /></div>
@@ -914,6 +928,50 @@
           <button class="btn" id="save-settings-smtp">${t("admin.parametros.saveSmtpBtn", "Guardar configuración de SMTP")}</button>
         </div>
         <div class="card mb16">
+          <h3 style="margin-top:0">${t("admin.parametros.paymentMethodsTitle", "Medios de pago")}</h3>
+          <p class="small muted">${t("admin.parametros.paymentMethodsHelp", "Agregá, renombrá o desactivá los medios de pago disponibles al cobrar en el POS, sin tocar código.")}</p>
+          <table>
+            <thead><tr><th data-i18n="common.name">${t("common.name", "Nombre")}</th><th data-i18n="common.status">${t("common.status", "Estado")}</th><th></th></tr></thead>
+            <tbody>
+              ${paymentMethods.map((pm) => `
+                <tr data-pm-row="${pm.id}">
+                  <td><input class="pm-label-input" data-pm-label="${pm.id}" value="${pm.label}" style="min-width:180px" /></td>
+                  <td><span class="pill pill-${pm.active ? "libre" : "pendiente_pago"}">${pm.active ? t("common.active", "Activo") : t("common.inactive", "Inactivo")}</span></td>
+                  <td>
+                    <button class="btn btn-sm" data-pm-save="${pm.id}">${t("btn.save", "Guardar")}</button>
+                    <button class="btn btn-sm" data-pm-toggle="${pm.id}" data-active="${pm.active}">${pm.active ? t("btn.deactivate", "Desactivar") : t("btn.activate", "Activar")}</button>
+                  </td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+          <div class="flex-gap mt16">
+            <input id="pm-new-label" placeholder="${t("admin.parametros.paymentMethodsNewPlaceholder", "Nuevo medio de pago (ej: Mercado Pago)")}" style="flex:1" />
+            <button class="btn btn-primary" id="pm-add-btn">${t("btn.add", "Agregar")}</button>
+          </div>
+        </div>
+        <div class="card mb16">
+          <h3 style="margin-top:0">${t("admin.parametros.discountReasonsTitle", "Motivos de descuento")}</h3>
+          <p class="small muted">${t("admin.parametros.discountReasonsHelp", 'Catálogo de motivos frecuentes para agilizar el descuento en el POS. La opción "Otro" para escribir un motivo libre siempre queda disponible ahí.')}</p>
+          <table>
+            <thead><tr><th data-i18n="common.name">${t("common.name", "Nombre")}</th><th data-i18n="common.status">${t("common.status", "Estado")}</th><th></th></tr></thead>
+            <tbody>
+              ${discountReasons.map((dr) => `
+                <tr data-dr-row="${dr.id}">
+                  <td><input class="dr-label-input" data-dr-label="${dr.id}" value="${dr.label}" style="min-width:180px" /></td>
+                  <td><span class="pill pill-${dr.active ? "libre" : "pendiente_pago"}">${dr.active ? t("common.active", "Activo") : t("common.inactive", "Inactivo")}</span></td>
+                  <td>
+                    <button class="btn btn-sm" data-dr-save="${dr.id}">${t("btn.save", "Guardar")}</button>
+                    <button class="btn btn-sm" data-dr-toggle="${dr.id}" data-active="${dr.active}">${dr.active ? t("btn.deactivate", "Desactivar") : t("btn.activate", "Activar")}</button>
+                  </td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+          <div class="flex-gap mt16">
+            <input id="dr-new-label" placeholder="${t("admin.parametros.discountReasonsNewPlaceholder", "Nuevo motivo (ej: Cliente frecuente)")}" style="flex:1" />
+            <button class="btn btn-primary" id="dr-add-btn">${t("btn.add", "Agregar")}</button>
+          </div>
+        </div>
+        <div class="card mb16">
           <h3 style="margin-top:0">${t("settings.language", "Idioma")}</h3>
           <p class="small muted">${t("admin.parametros.languageHelp", "Cambia el idioma de toda la interfaz para todo el personal (navegación, títulos y acciones principales). Los nombres de productos, categorías y mesas que vos cargaste, y los mensajes que devuelve el sistema, se mantienen en español.")}</p>
           <div class="field">
@@ -932,15 +990,18 @@
     function wireParametros() {
       async function saveBusinessData() {
         try {
+          const currencySymbol = document.getElementById("set-currency-symbol").value || "$";
           await apiWithOverride("/settings", { method: "PATCH", body: {
             name: document.getElementById("set-name").value,
             legalName: document.getElementById("set-legal-name").value,
             taxId: document.getElementById("set-tax-id").value,
             currency: document.getElementById("set-currency").value,
+            currencySymbol,
             fiscalAddress: document.getElementById("set-fiscal-address").value,
             phone: document.getElementById("set-phone").value,
             invoicePrefix: document.getElementById("set-invoice-prefix").value,
           }}, "settings:manage");
+          setCurrencySymbol(currencySymbol); // se refleja de una en cualquier monto de la propia sesión
           toast(t("admin.parametros.businessDataSavedToast", "Datos del negocio guardados."), "success");
           await refresh();
         } catch (err) { toast(err.message, "error"); }
@@ -999,6 +1060,78 @@
       document.getElementById("save-settings-2").addEventListener("click", saveMailData);
       document.getElementById("save-settings-smtp").addEventListener("click", saveSmtpData);
       document.getElementById("save-settings-language").addEventListener("click", saveLanguage);
+
+      // -----------------------------------------------------------------
+      // Medios de pago
+      // -----------------------------------------------------------------
+      document.getElementById("pm-add-btn").addEventListener("click", async () => {
+        const input = document.getElementById("pm-new-label");
+        const label = input.value.trim();
+        if (!label) return;
+        try {
+          await api("/payment-methods", { method: "POST", body: { label } });
+          toast(t("admin.parametros.paymentMethodsAddedToast", "Medio de pago agregado."), "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      });
+      document.querySelectorAll("[data-pm-save]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.pmSave;
+          const label = document.querySelector(`[data-pm-label="${id}"]`).value.trim();
+          if (!label) return;
+          try {
+            await api(`/payment-methods/${id}`, { method: "PATCH", body: { label } });
+            toast(t("admin.parametros.paymentMethodsUpdatedToast", "Medio de pago actualizado."), "success");
+            await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-pm-toggle]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.pmToggle;
+          const active = btn.dataset.active !== "true";
+          try {
+            await api(`/payment-methods/${id}`, { method: "PATCH", body: { active } });
+            await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+
+      // -----------------------------------------------------------------
+      // Motivos de descuento
+      // -----------------------------------------------------------------
+      document.getElementById("dr-add-btn").addEventListener("click", async () => {
+        const input = document.getElementById("dr-new-label");
+        const label = input.value.trim();
+        if (!label) return;
+        try {
+          await api("/discount-reasons", { method: "POST", body: { label } });
+          toast(t("admin.parametros.discountReasonsAddedToast", "Motivo agregado."), "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      });
+      document.querySelectorAll("[data-dr-save]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.drSave;
+          const label = document.querySelector(`[data-dr-label="${id}"]`).value.trim();
+          if (!label) return;
+          try {
+            await api(`/discount-reasons/${id}`, { method: "PATCH", body: { label } });
+            toast(t("admin.parametros.discountReasonsUpdatedToast", "Motivo actualizado."), "success");
+            await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
+      document.querySelectorAll("[data-dr-toggle]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.drToggle;
+          const active = btn.dataset.active !== "true";
+          try {
+            await api(`/discount-reasons/${id}`, { method: "PATCH", body: { active } });
+            await refresh();
+          } catch (err) { toast(err.message, "error"); }
+        });
+      });
     }
 
     // ---------------------------------------------------------------------

@@ -70,7 +70,7 @@
           <td>${typeLabel(o.type)}</td>
           <td>${o.table_name || o.customer_name || "-"}</td>
           <td>${o.waiter_name || "-"}</td>
-          <td>$${money(o.total)}</td>
+          <td>${money(o.total)}</td>
           <td><span class="pill pill-${o.status === "ABIERTO" ? "ocupada" : o.status === "CERRADO" ? "libre" : "pendiente_pago"}">${t("order.status." + o.status, o.status)}</span></td>
           <td>${invoiceCell(o)}</td>
           <td><a class="btn btn-sm" href="/pages/pos.html?orderId=${o.id}">${t("pedidos.viewBtn", "Ver")}</a></td>

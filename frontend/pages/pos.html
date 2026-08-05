@@ -84,12 +84,37 @@
     let products = [];
     let activeCategoryId = null;
     let branch = null;
+    // Medios de pago y motivos de descuento configurables (Administración →
+    // Parámetros): se cargan una vez al entrar al POS y se usan para armar
+    // los desplegables de "Medio de pago" y "Motivo" en vez de la lista fija
+    // de siempre. Si la carga falla (ej. permiso insuficiente) se cae a un
+    // set fijo equivalente al de antes, para no dejar el POS sin poder cobrar.
+    let paymentMethods = [
+      { code: "EFECTIVO", label: t("pos.payMethod.EFECTIVO", "Efectivo") },
+      { code: "TARJETA", label: t("pos.payMethod.TARJETA", "Tarjeta") },
+      { code: "TRANSFERENCIA", label: t("pos.payMethod.TRANSFERENCIA", "Transferencia") },
+      { code: "DIGITAL", label: t("pos.payMethod.DIGITAL", "Pago digital") },
+      { code: "OTRO", label: t("pos.payMethod.OTRO", "Otro") },
+    ];
+    let discountReasons = [];
     (async () => {
       try {
         const data = await api("/settings/public");
         branch = data.branch;
       } catch (err) {
         branch = null;
+      }
+      try {
+        const pm = await api("/payment-methods");
+        if (pm.paymentMethods.length > 0) paymentMethods = pm.paymentMethods;
+      } catch (err) {
+        // se mantiene el set fijo de respaldo declarado arriba
+      }
+      try {
+        const dr = await api("/discount-reasons");
+        discountReasons = dr.discountReasons;
+      } catch (err) {
+        discountReasons = [];
       }
     })();
     const canClose = ["ADMIN", "DUENIO", "ENCARGADO", "CAJERO"].includes(user.role);
@@ -114,26 +139,26 @@
         .filter((it) => !it.canceled)
         .forEach((it) => {
           const lineTotal = it.quantity * (Number(it.unit_price) + it.modifiers.reduce((s, m) => s + Number(m.price), 0));
-          lines.push(`${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}  $${money(lineTotal)}`);
+          lines.push(`${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}  ${money(lineTotal)}`);
           it.modifiers.forEach((m) =>
             lines.push(`   + ${Number(m.quantity) > 1 ? `${m.quantity}x ` : ""}${m.modifier_name}`)
           );
           if (it.notes) lines.push(`   * ${it.notes}`);
         });
       lines.push("--------------------------------");
-      lines.push(`${t("common.subtotal", "Subtotal")}: $${money(order.subtotal)}`);
+      lines.push(`${t("common.subtotal", "Subtotal")}: ${money(order.subtotal)}`);
       if (Number(order.discount_percent) > 0) {
         const discountAmount = (Number(order.subtotal) * Number(order.discount_percent)) / 100;
-        lines.push(`${t("common.discount", "Descuento")} (${order.discount_percent}%): -$${money(discountAmount)}`);
+        lines.push(`${t("common.discount", "Descuento")} (${order.discount_percent}%): -${money(discountAmount)}`);
       }
       if (Number(order.tax_amount) > 0) {
         const modeSuffix = branch && branch.taxMode === "INCLUSIVE" ? ` (${t("pos.ticket.taxIncluded", "incluido")})` : "";
-        lines.push(`${(branch && branch.taxLabel) || t("pos.ticket.taxLabelFallback", "IVA")}${modeSuffix}: $${money(order.tax_amount)}`);
+        lines.push(`${(branch && branch.taxLabel) || t("pos.ticket.taxLabelFallback", "IVA")}${modeSuffix}: ${money(order.tax_amount)}`);
       }
-      lines.push(`${t("common.total", "Total").toUpperCase()}: $${money(order.total)}`);
+      lines.push(`${t("common.total", "Total").toUpperCase()}: ${money(order.total)}`);
       if (order.payments && order.payments.length > 0) {
         lines.push("--------------------------------");
-        order.payments.forEach((p) => lines.push(`${t("pos.ticket.paymentLabel", "Pago")} (${p.method}): $${money(p.amount)}`));
+        order.payments.forEach((p) => lines.push(`${t("pos.ticket.paymentLabel", "Pago")} (${p.method}): ${money(p.amount)}`));
       }
       lines.push("--------------------------------");
       lines.push(t("pos.ticket.thanksMessage", "¡Gracias por su visita!"));
@@ -202,7 +227,7 @@
           (p) => `
         <div class="product-card" data-product="${p.id}">
           <div class="p-name">${p.name}</div>
-          <div class="p-price">$${money(p.base_price)}</div>
+          <div class="p-price">${money(p.base_price)}</div>
         </div>`
         )
         .join("");
@@ -223,7 +248,7 @@
 
       const variantHtml = hasVariants
         ? `<div class="field"><label>${t("pos.addItemModal.variantLabel", "Variante")}</label><select id="variant-select">
-            ${product.variants.map((v) => `<option value="${v.id}" data-price="${v.price}">${v.name} - $${money(v.price)}</option>`).join("")}
+            ${product.variants.map((v) => `<option value="${v.id}" data-price="${v.price}">${v.name} - ${money(v.price)}</option>`).join("")}
           </select></div>`
         : "";
 
@@ -237,7 +262,7 @@
               (m) => `
             <label class="small" style="display:flex;align-items:center;gap:6px;font-weight:normal">
               <input type="${g.max === 1 ? "radio" : "checkbox"}" name="group-${g.id}" value="${m.id}" data-price="${m.price}" data-group="${g.id}" data-max="${g.max}" />
-              ${m.name} ${Number(m.price) > 0 ? `(+$${money(m.price)})` : ""}
+              ${m.name} ${Number(m.price) > 0 ? `(+${money(m.price)})` : ""}
             </label>`
             )
             .join("")}
@@ -385,7 +410,7 @@
             <div class="ticket-item" style="${it.canceled ? "opacity:.45;text-decoration:line-through" : ""}">
               <div class="ti-top">
                 <span>${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}</span>
-                <span>$${money(lineTotal)}</span>
+                <span>${money(lineTotal)}</span>
               </div>
               ${modsTxt ? `<div class="ti-mods">${modsTxt}</div>` : ""}
               ${it.notes ? `<div class="ti-mods">📝 ${it.notes}</div>` : ""}
@@ -429,12 +454,12 @@
       // mozos/cajeros); el gerente sí puede auditar por qué se dio.
       const canSeeDiscountReason = ["ADMIN", "DUENIO", "ENCARGADO"].includes(user.role);
       totalsEl.innerHTML = `
-        <div class="ticket-total-row"><span>${t("common.subtotal", "Subtotal")}</span><span>$${money(order.subtotal)}</span></div>
-        ${Number(order.discount_percent) > 0 ? `<div class="ticket-total-row"><span>${t("common.discount", "Descuento")} (${order.discount_percent}%)</span><span>-$${money(discountAmount)}</span></div>` : ""}
+        <div class="ticket-total-row"><span>${t("common.subtotal", "Subtotal")}</span><span>${money(order.subtotal)}</span></div>
+        ${Number(order.discount_percent) > 0 ? `<div class="ticket-total-row"><span>${t("common.discount", "Descuento")} (${order.discount_percent}%)</span><span>-${money(discountAmount)}</span></div>` : ""}
         ${Number(order.discount_percent) > 0 && canSeeDiscountReason ? `<div class="ticket-total-row small muted" style="margin-top:-6px"><span>${t("pos.reasonLabel", "Motivo")}: ${order.discount_reason ? order.discount_reason : t("pos.reasonUnspecified", "(sin especificar)")}</span><span></span></div>` : ""}
-        ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch?.taxLabel || t("pos.ticket.taxLabelFallback", "IVA")}${branch?.taxMode === "INCLUSIVE" ? ` (${t("pos.ticket.taxIncluded", "incluido")})` : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
-        <div class="ticket-total-row grand"><span>${t("common.total", "Total")}</span><span>$${money(order.total)}</span></div>
-        ${order.payments.length > 0 ? `<div class="ticket-total-row small muted"><span>${t("pos.paidLabel", "Pagado")}</span><span>$${money(order.totalPaid)}</span></div>` : ""}
+        ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch?.taxLabel || t("pos.ticket.taxLabelFallback", "IVA")}${branch?.taxMode === "INCLUSIVE" ? ` (${t("pos.ticket.taxIncluded", "incluido")})` : ""}</span><span>${money(taxAmount)}</span></div>` : ""}
+        <div class="ticket-total-row grand"><span>${t("common.total", "Total")}</span><span>${money(order.total)}</span></div>
+        ${order.payments.length > 0 ? `<div class="ticket-total-row small muted"><span>${t("pos.paidLabel", "Pagado")}</span><span>${money(order.totalPaid)}</span></div>` : ""}
       `;
 
       renderActions();
@@ -539,13 +564,36 @@
       // usuario no lo tiene, se le ofrece pedir autorización de un
       // supervisor en el momento (ver requestManagerOverride en api.js).
       el.querySelector("#discount-btn").addEventListener("click", () => {
+        const OTHER_VALUE = "__OTHER__";
+        const currentReason = order.discount_reason || "";
+        // Si el motivo ya cargado coincide con uno del catálogo se preselecciona
+        // ese; si no (texto libre viejo, o ninguno todavía) arranca en "Otro"
+        // con el texto libre precargado, para no perder lo que ya había.
+        const matchesCatalog = discountReasons.some((r) => r.label === currentReason);
+        const initialSelectValue = currentReason && matchesCatalog ? currentReason : OTHER_VALUE;
         const overlay = showModal(`
           <h2>${t("page.pos.applyDiscount", "Aplicar descuento")}</h2>
           <div class="field"><label>${t("pos.discountModal.percentLabel", "Porcentaje (%)")}</label><input type="number" id="discount-percent" min="0" max="100" value="${order.discount_percent}" /></div>
-          <div class="field"><label>${t("pos.reasonLabel", "Motivo")}</label><input id="discount-reason" value="${order.discount_reason || ""}" /></div>
+          <div class="field">
+            <label>${t("pos.reasonLabel", "Motivo")}</label>
+            <select id="discount-reason-select">
+              ${discountReasons.map((r) => `<option value="${r.label}" ${initialSelectValue === r.label ? "selected" : ""}>${r.label}</option>`).join("")}
+              <option value="${OTHER_VALUE}" ${initialSelectValue === OTHER_VALUE ? "selected" : ""}>${t("pos.discountModal.reasonOtherOption", "Otro (especificar)")}</option>
+            </select>
+          </div>
+          <div class="field" id="discount-reason-custom-field" style="${initialSelectValue === OTHER_VALUE ? "" : "display:none"}">
+            <input id="discount-reason-custom" placeholder="${t("pos.discountModal.reasonCustomPlaceholder", "Escribí el motivo")}" value="${initialSelectValue === OTHER_VALUE ? currentReason : ""}" />
+          </div>
           <button class="btn btn-primary" id="apply-discount">${t("pos.discountModal.applyBtn", "Aplicar")}</button>
         `);
+        const selectEl = overlay.querySelector("#discount-reason-select");
+        const customField = overlay.querySelector("#discount-reason-custom-field");
+        selectEl.addEventListener("change", () => {
+          customField.style.display = selectEl.value === OTHER_VALUE ? "" : "none";
+        });
         overlay.querySelector("#apply-discount").addEventListener("click", async () => {
+          const reason =
+            selectEl.value === OTHER_VALUE ? overlay.querySelector("#discount-reason-custom").value : selectEl.value;
           try {
             await apiWithOverride(
               `/orders/${order.id}/discount`,
@@ -553,7 +601,7 @@
                 method: "POST",
                 body: {
                   percent: Number(overlay.querySelector("#discount-percent").value),
-                  reason: overlay.querySelector("#discount-reason").value,
+                  reason,
                 },
               },
               "orders:discount"
@@ -621,14 +669,10 @@
       const remaining = Math.max(0, Number(order.total) - Number(order.totalPaid));
       const overlay = showModal(`
         <h2>${t("pos.payModal.title", { code: order.code })}</h2>
-        <p>${t("common.total", "Total")}: <strong>$${money(order.total)}</strong> · ${t("pos.paidLabel", "Pagado")}: $${money(order.totalPaid)} · ${t("pos.payModal.remainingLabel", "Falta")}: <strong>$${money(remaining)}</strong></p>
+        <p>${t("common.total", "Total")}: <strong>${money(order.total)}</strong> · ${t("pos.paidLabel", "Pagado")}: ${money(order.totalPaid)} · ${t("pos.payModal.remainingLabel", "Falta")}: <strong>${money(remaining)}</strong></p>
         <div class="field"><label>${t("pos.payModal.methodLabel", "Medio de pago")}</label>
           <select id="pay-method">
-            <option value="EFECTIVO">${t("pos.payMethod.EFECTIVO", "Efectivo")}</option>
-            <option value="TARJETA">${t("pos.payMethod.TARJETA", "Tarjeta")}</option>
-            <option value="TRANSFERENCIA">${t("pos.payMethod.TRANSFERENCIA", "Transferencia")}</option>
-            <option value="DIGITAL">${t("pos.payMethod.DIGITAL", "Pago digital")}</option>
-            <option value="OTRO">${t("pos.payMethod.OTRO", "Otro")}</option>
+            ${paymentMethods.map((m) => `<option value="${m.code}">${m.label}</option>`).join("")}
           </select>
         </div>
         <div class="field"><label>${t("pos.payModal.amountLabel", "Monto")}</label><input type="number" id="pay-amount" value="${remaining.toFixed(2)}" min="0.01" step="0.01" /></div>

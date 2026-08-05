@@ -147,12 +147,12 @@
               : order.items
                   .filter((i) => !i.canceled)
                   .map(
-                    (i) => `<div class="ticket-item"><div class="ti-top"><span>${i.quantity}x ${i.product_name}</span><span>$${money(i.unit_price * i.quantity)}</span></div></div>`
+                    (i) => `<div class="ticket-item"><div class="ti-top"><span>${i.quantity}x ${i.product_name}</span><span>${money(i.unit_price * i.quantity)}</span></div></div>`
                   )
                   .join("")
           }
         </div>
-        <div class="ticket-total-row grand"><span>${t("common.total")}</span><span>$${money(order.total)}</span></div>
+        <div class="ticket-total-row grand"><span>${t("common.total")}</span><span>${money(order.total)}</span></div>
         <div class="flex-gap mt16" style="flex-wrap:wrap">
           <a class="btn btn-primary" href="/pages/pos.html?orderId=${order.id}">${t("salon.viewEditOrder")}</a>
           <a class="btn btn-accent" href="/pages/pos.html?orderId=${order.id}&pay=1">${t("page.pos.pay")}</a>

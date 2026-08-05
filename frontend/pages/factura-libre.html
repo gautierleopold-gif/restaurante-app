@@ -84,7 +84,7 @@
           const price = Number(tr.querySelector(".fi-price").value) || 0;
           const lineTotal = qty * price;
           subtotal += lineTotal;
-          tr.querySelector(".fi-line-total").textContent = `$${money(lineTotal)}`;
+          tr.querySelector(".fi-line-total").textContent = `${money(lineTotal)}`;
         });
         const taxRate = (branch && branch.taxRate) || 0;
         const taxMode = (branch && branch.taxMode) || "NONE";
@@ -97,9 +97,9 @@
           taxAmount = subtotal * (taxRate / (100 + taxRate));
         }
         document.getElementById("totals-preview").innerHTML = `
-          <div class="ticket-total-row"><span>${t("common.subtotal", "Subtotal")}</span><span>$${money(subtotal)}</span></div>
-          ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch.taxLabel || t("pos.ticket.taxLabelFallback", "IVA")}${taxMode === "INCLUSIVE" ? ` (${t("factura.taxIncluded", "incluido")})` : ""}</span><span>$${money(taxAmount)}</span></div>` : ""}
-          <div class="ticket-total-row grand"><span>${t("common.total", "Total")}</span><span>$${money(total)}</span></div>
+          <div class="ticket-total-row"><span>${t("common.subtotal", "Subtotal")}</span><span>${money(subtotal)}</span></div>
+          ${taxAmount > 0 ? `<div class="ticket-total-row small muted"><span>${branch.taxLabel || t("pos.ticket.taxLabelFallback", "IVA")}${taxMode === "INCLUSIVE" ? ` (${t("factura.taxIncluded", "incluido")})` : ""}</span><span>${money(taxAmount)}</span></div>` : ""}
+          <div class="ticket-total-row grand"><span>${t("common.total", "Total")}</span><span>${money(total)}</span></div>
         `;
       }
 
@@ -196,7 +196,7 @@
             <td>${inv.number}</td>
             <td>${fmtDateTime(inv.created_at)}</td>
             <td>${inv.customer_name || t("factura.finalConsumer", "Consumidor final")}</td>
-            <td>$${money(inv.total)}</td>
+            <td>${money(inv.total)}</td>
             <td><button class="btn btn-sm" data-history-pdf="${inv.id}" data-number="${inv.number}">${t("pedidos.pdfBtn", "PDF")}</button></td>
           </tr>`
           )

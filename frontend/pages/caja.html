@@ -21,6 +21,33 @@
     </div>
 
     <div class="card mb16">
+      <h3 style="margin-top:0" data-i18n="caja.movementsTitle">Movimientos de caja</h3>
+      <p class="small muted" data-i18n="caja.movementsHelp">Ingresos o egresos de efectivo que no son una venta (por ejemplo, un retiro para comprar algo, o un aporte de fondo). Se reflejan en el resumen del período abierto de arriba.</p>
+      <div class="flex-gap mb16" style="flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin:0">
+          <label data-i18n="caja.col.type">Tipo</label>
+          <select id="mov-type">
+            <option value="INGRESO" data-i18n="caja.movements.typeIncome">Ingreso</option>
+            <option value="EGRESO" data-i18n="caja.movements.typeExpense">Egreso</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label data-i18n="common.amount">Monto</label>
+          <input id="mov-amount" type="number" step="0.01" min="0.01" style="max-width:140px" />
+        </div>
+        <div class="field" style="margin:0;flex:1;min-width:180px">
+          <label data-i18n="pos.reasonLabel">Motivo</label>
+          <input id="mov-reason" />
+        </div>
+        <button class="btn btn-primary" id="mov-add-btn" data-i18n="caja.movements.addBtn">Registrar movimiento</button>
+      </div>
+      <table>
+        <thead><tr><th data-i18n="caja.col.date">Fecha</th><th data-i18n="caja.col.type">Tipo</th><th data-i18n="caja.col.amount">Monto</th><th data-i18n="pos.reasonLabel">Motivo</th><th data-i18n="caja.col.registeredBy">Registrado por</th></tr></thead>
+        <tbody id="movements-body"></tbody>
+      </table>
+    </div>
+
+    <div class="card mb16">
       <h3 style="margin-top:0" data-i18n="page.caja.tipsTitle">Cuenta de propinas</h3>
       <p class="small muted" data-i18n="caja.tipsHelp">Lo que se paga de más sobre el total de un pedido (por ejemplo, pagar $1000 por una cuenta de $950) se acredita automáticamente acá, como propina. También se puede agregar una propina manualmente en cualquier momento.</p>
       <div class="flex-between mb8">
@@ -54,16 +81,32 @@
         return fmtDateTime(d);
       }
 
+      // Etiquetas de los medios de pago configurados (Administración →
+      // Parámetros): se usan para mostrar el nombre correcto en vez del
+      // código crudo en los resúmenes de abajo. Si no se pudo cargar (o un
+      // pago viejo quedó con un código que ya no existe), se cae al
+      // diccionario fijo de siempre.
+      let paymentMethodLabels = {};
+      async function loadPaymentMethodLabels() {
+        try {
+          const pm = await api("/payment-methods");
+          paymentMethodLabels = Object.fromEntries(pm.paymentMethods.map((m) => [m.code, m.label]));
+        } catch (err) {
+          paymentMethodLabels = {};
+        }
+      }
+
       function methodsSummary(obj) {
         const entries = Object.entries(obj || {});
         if (entries.length === 0) return "-";
-        return entries.map(([m, v]) => `${t("pos.payMethod." + m, m)}: $${money(v)}`).join(" · ");
+        return entries.map(([m, v]) => `${paymentMethodLabels[m] || t("pos.payMethod." + m, m)}: ${money(v)}`).join(" · ");
       }
 
       async function loadPreview() {
         const el = document.getElementById("preview-summary");
         try {
           const data = await api("/cash-closures/preview");
+          const movementsTotal = Number(data.manualMovementsTotal || 0);
           el.innerHTML = `
             <div class="grid grid-2">
               <div><span class="small muted">${t("caja.summary.fromLabel", "Desde")}</span><br />${fmtDate(data.periodFrom)}</div>
@@ -71,14 +114,61 @@
             </div>
             <div class="mt16 grid grid-2">
               <div><span class="small muted">${t("caja.summary.orderCountLabel", "Pedidos cerrados")}</span><br /><strong>${data.orderCount}</strong></div>
-              <div><span class="small muted">${t("caja.summary.totalSalesLabel", "Ventas totales")}</span><br /><strong>$${money(data.totalSales)}</strong></div>
+              <div><span class="small muted">${t("caja.summary.totalSalesLabel", "Ventas totales")}</span><br /><strong>${money(data.totalSales)}</strong></div>
             </div>
             <div class="mt16"><span class="small muted">${t("caja.summary.byMethodLabel", "Por medio de pago")}</span><br />${methodsSummary(data.totalsByMethod)}</div>
+            <div class="mt16"><span class="small muted">${t("caja.summary.manualMovementsLabel", "Movimientos manuales (neto)")}</span><br /><strong style="${movementsTotal < 0 ? "color:var(--danger,#c0392b)" : ""}">${movementsTotal < 0 ? "-" : ""}${money(Math.abs(movementsTotal))}</strong></div>
           `;
         } catch (err) {
           el.innerHTML = `<p class="small muted">${t("caja.summary.error", "No se pudo calcular el resumen: {message}", { message: err.message })}</p>`;
         }
       }
+
+      // ---------------------------------------------------------------------
+      // Movimientos de caja manuales (ingresos/egresos que no son una venta)
+      // ---------------------------------------------------------------------
+      async function loadMovements() {
+        const body = document.getElementById("movements-body");
+        try {
+          const data = await api("/cash-movements");
+          if (data.movements.length === 0) {
+            body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">${t("caja.movements.none", "Todavía no hay movimientos de caja.")}</td></tr>`;
+            return;
+          }
+          body.innerHTML = data.movements
+            .map(
+              (m) => `<tr>
+                <td>${fmtDate(m.created_at)}</td>
+                <td>${m.type === "INGRESO" ? t("caja.movements.typeIncome", "Ingreso") : t("caja.movements.typeExpense", "Egreso")}</td>
+                <td>${m.type === "EGRESO" ? "-" : ""}${money(m.amount)}</td>
+                <td class="small muted">${m.reason || "-"}</td>
+                <td>${m.created_by_name || "-"}</td>
+              </tr>`
+            )
+            .join("");
+        } catch (err) {
+          body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">-</td></tr>`;
+        }
+      }
+
+      document.getElementById("mov-add-btn").addEventListener("click", async () => {
+        const type = document.getElementById("mov-type").value;
+        const amount = Number(document.getElementById("mov-amount").value);
+        const reason = document.getElementById("mov-reason").value || null;
+        if (!amount || amount <= 0) {
+          toast(t("pos.payModal.invalidAmountError", "Ingresá un monto válido."), "error");
+          return;
+        }
+        try {
+          await api("/cash-movements", { method: "POST", body: { type, amount, reason } });
+          document.getElementById("mov-amount").value = "";
+          document.getElementById("mov-reason").value = "";
+          toast(t("caja.movements.addedToast", "Movimiento registrado."), "success");
+          await Promise.all([loadMovements(), loadPreview()]);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
 
       async function loadHistory() {
         const data = await api("/cash-closures");
@@ -94,7 +184,7 @@
             <td>${fmtDate(c.created_at)}</td>
             <td>${fmtDate(c.period_from)} → ${fmtDate(c.period_to)}</td>
             <td>${c.order_count}</td>
-            <td>$${money(c.total_sales)}</td>
+            <td>${money(c.total_sales)}</td>
             <td class="small">${methodsSummary(c.totals_by_method)}</td>
             <td>${c.closed_by_name || "-"}</td>
           </tr>`
@@ -129,7 +219,7 @@
       async function loadTips() {
         try {
           const data = await api("/tips");
-          document.getElementById("tips-balance").textContent = `$${money(data.balance)}`;
+          document.getElementById("tips-balance").textContent = `${money(data.balance)}`;
           const actionsEl = document.getElementById("tips-actions");
           actionsEl.innerHTML = canManageTips
             ? `<button class="btn btn-sm" id="tips-add-btn" data-i18n="page.caja.tipsAdd">${t("page.caja.tipsAdd")}</button>
@@ -144,7 +234,7 @@
                 (tx) => `<tr>
                   <td>${fmtDate(tx.created_at)}</td>
                   <td>${tipTypeLabel(tx.type)}</td>
-                  <td>${Number(tx.amount) < 0 ? "-" : ""}$${money(Math.abs(tx.amount))}</td>
+                  <td>${Number(tx.amount) < 0 ? "-" : ""}${money(Math.abs(tx.amount))}</td>
                   <td>${tx.order_code ? "#" + tx.order_code : "-"}</td>
                   <td>${tx.created_by_name || "-"}</td>
                   <td class="small muted">${tx.notes || "-"}</td>
@@ -187,9 +277,12 @@
         }
       }
 
-      loadPreview();
-      loadHistory();
+      loadPaymentMethodLabels().then(() => {
+        loadPreview();
+        loadHistory();
+      });
       loadTips();
+      loadMovements();
     }
   </script>
 </body>
