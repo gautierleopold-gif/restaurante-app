@@ -564,8 +564,12 @@ router.post(
   "/:id/payments",
   requirePermission("payments:register"),
   asyncHandler(async (req, res) => {
+    // El medio de pago ahora es configurable desde Administración → Parámetros
+    // (tabla payment_methods), así que ya no es un enum cerrado de 5 valores
+    // fijos: se acepta cualquier código no vacío que envíe el POS (que a su
+    // vez solo ofrece los medios activos configurados).
     const schema = z.object({
-      method: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "DIGITAL", "OTRO"]),
+      method: z.string().min(1).max(40),
       amount: z.number().positive(),
     });
     const { method, amount } = schema.parse(req.body);

@@ -78,12 +78,28 @@ async function computeSummary(branchId) {
     totalsByMethod = Object.fromEntries(paymentRows.map((p) => [p.method, Number(p.total)]));
   }
 
+  // Movimientos manuales de caja (ingresos/egresos que no son una venta) del
+  // mismo período: se muestran aparte y se incluyen como neto en el resumen,
+  // para que un retiro de efectivo o un aporte de fondo no quede invisible.
+  const movementFilter = branchId ? `branch_id = $3` : `branch_id IS NULL`;
+  const { rows: movementRows } = await query(
+    `SELECT type, SUM(amount) AS total FROM cash_movements
+     WHERE created_at > $1 AND created_at <= $2 AND ${movementFilter}
+     GROUP BY type`,
+    params
+  );
+  let manualMovementsTotal = 0;
+  for (const m of movementRows) {
+    manualMovementsTotal += m.type === "INGRESO" ? Number(m.total) : -Number(m.total);
+  }
+
   return {
     periodFrom,
     periodTo,
     orderCount: orderRows.length,
     totalSales,
     totalsByMethod,
+    manualMovementsTotal,
   };
 }
 
@@ -100,8 +116,8 @@ router.post(
       const summary = await computeSummary(branchId);
       const { rows } = await client.query(
         `INSERT INTO cash_closures
-           (branch_id, closed_by_id, period_from, period_to, order_count, total_sales, totals_by_method, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+           (branch_id, closed_by_id, period_from, period_to, order_count, total_sales, totals_by_method, notes, manual_movements_total)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [
           branchId,
           req.user.id,
@@ -111,6 +127,7 @@ router.post(
           summary.totalSales.toFixed(2),
           JSON.stringify(summary.totalsByMethod),
           req.body?.notes || null,
+          summary.manualMovementsTotal.toFixed(2),
         ]
       );
       return rows[0];
