@@ -2590,6 +2590,40 @@ async function syncLangFromServer() {
   }
 }
 
+// Traduce un nodo recién agregado al DOM (y sus hijos). A diferencia de
+// applyTranslations(), también revisa el nodo raíz por si el propio nodo
+// (no solo sus descendientes) tiene data-i18n.
+function translateNode(node) {
+  if (!node || node.nodeType !== 1) return;
+  if (node.hasAttribute && node.hasAttribute("data-i18n")) {
+    node.textContent = t(node.dataset.i18n, node.textContent);
+  }
+  if (node.hasAttribute && node.hasAttribute("data-i18n-placeholder")) {
+    node.placeholder = t(node.dataset.i18nPlaceholder, node.placeholder);
+  }
+  applyTranslations(node);
+}
+
+// Muchas pantallas re-renderizan secciones enteras con innerHTML (pestañas
+// de Administración, tickets, modales) después de la carga inicial de la
+// página. Sin esto, ese contenido nuevo se quedaría en español para
+// siempre, porque applyTranslations() ya pasó una sola vez. Este observer
+// traduce automáticamente cualquier nodo con data-i18n que se agregue al
+// DOM en cualquier momento, para no depender de que cada función de render
+// se acuerde de volver a llamar a applyTranslations() a mano.
+if (typeof MutationObserver !== "undefined") {
+  const i18nObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => translateNode(node));
+    }
+  });
+  document.addEventListener("DOMContentLoaded", () => {
+    if (document.body) {
+      i18nObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  });
+}
+
 // Aplica el idioma cacheado apenas carga el script (antes de esperar la red)
 // para que no haya un "flash" en español, y de paso sincroniza contra el
 // servidor por si cambió desde otro dispositivo/usuario.
