@@ -118,4 +118,12 @@ async function apiWithOverride(path, opts, permission) {
   }
 }
 
-const money = (n) => fmtNumber(n || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Devuelve el monto ya formateado CON el símbolo de moneda configurado
+// (Administración → Parámetros; antes era un "$" fijo escrito en cada
+// pantalla). Los llamados existentes en las páginas ya no anteponen "$" a
+// mano: se les sacó ese literal para no mostrarlo duplicado.
+const money = (n) =>
+  `${typeof getCurrencySymbol === "function" ? getCurrencySymbol() : "$"}${fmtNumber(n || 0, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;

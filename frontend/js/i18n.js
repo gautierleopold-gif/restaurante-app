@@ -510,6 +510,29 @@ const I18N_DICT = {
     "ui.changePassword.updatedToast": "Contraseña actualizada.",
     "ui.accessRestricted.title": "Acceso restringido",
     "ui.accessRestricted.text": "Tu rol ({role}) no tiene acceso a esta sección.",
+    "admin.parametros.currencySymbolLabel": "Símbolo de moneda",
+    "admin.parametros.currencySymbolHelp": "Se muestra junto a cada monto en el POS, la caja y los tickets (ej: \"$\", \"US$\", \"€\").",
+    "admin.parametros.paymentMethodsTitle": "Medios de pago",
+    "admin.parametros.paymentMethodsHelp": "Agregá, renombrá o desactivá los medios de pago disponibles al cobrar en el POS, sin tocar código.",
+    "admin.parametros.paymentMethodsNewPlaceholder": "Nuevo medio de pago (ej: Mercado Pago)",
+    "admin.parametros.paymentMethodsAddedToast": "Medio de pago agregado.",
+    "admin.parametros.paymentMethodsUpdatedToast": "Medio de pago actualizado.",
+    "admin.parametros.discountReasonsTitle": "Motivos de descuento",
+    "admin.parametros.discountReasonsHelp": "Catálogo de motivos frecuentes para agilizar el descuento en el POS. La opción \"Otro\" para escribir un motivo libre siempre queda disponible ahí.",
+    "admin.parametros.discountReasonsNewPlaceholder": "Nuevo motivo (ej: Cliente frecuente)",
+    "admin.parametros.discountReasonsAddedToast": "Motivo agregado.",
+    "admin.parametros.discountReasonsUpdatedToast": "Motivo actualizado.",
+    "btn.add": "Agregar",
+    "pos.discountModal.reasonOtherOption": "Otro (especificar)",
+    "pos.discountModal.reasonCustomPlaceholder": "Escribí el motivo",
+    "caja.movementsTitle": "Movimientos de caja",
+    "caja.movementsHelp": "Ingresos o egresos de efectivo que no son una venta (por ejemplo, un retiro para comprar algo, o un aporte de fondo). Se reflejan en el resumen del período abierto de arriba.",
+    "caja.movements.addBtn": "Registrar movimiento",
+    "caja.movements.typeIncome": "Ingreso",
+    "caja.movements.typeExpense": "Egreso",
+    "caja.movements.addedToast": "Movimiento registrado.",
+    "caja.movements.none": "Todavía no hay movimientos de caja.",
+    "caja.summary.manualMovementsLabel": "Movimientos manuales (neto)",
   },
   fr: {
     "nav.salon": "Salle",
@@ -1009,6 +1032,29 @@ const I18N_DICT = {
     "ui.changePassword.updatedToast": "Mot de passe mis à jour.",
     "ui.accessRestricted.title": "Accès restreint",
     "ui.accessRestricted.text": "Votre rôle ({role}) n'a pas accès à cette section.",
+    "admin.parametros.currencySymbolLabel": "Symbole monétaire",
+    "admin.parametros.currencySymbolHelp": "S'affiche à côté de chaque montant dans le TPV, la caisse et les tickets (ex : « $ », « US$ », « € »).",
+    "admin.parametros.paymentMethodsTitle": "Moyens de paiement",
+    "admin.parametros.paymentMethodsHelp": "Ajoutez, renommez ou désactivez les moyens de paiement disponibles à l'encaissement dans le TPV, sans toucher au code.",
+    "admin.parametros.paymentMethodsNewPlaceholder": "Nouveau moyen de paiement (ex : Mercado Pago)",
+    "admin.parametros.paymentMethodsAddedToast": "Moyen de paiement ajouté.",
+    "admin.parametros.paymentMethodsUpdatedToast": "Moyen de paiement mis à jour.",
+    "admin.parametros.discountReasonsTitle": "Motifs de remise",
+    "admin.parametros.discountReasonsHelp": "Catalogue de motifs fréquents pour accélérer la remise dans le TPV. L'option « Autre » pour écrire un motif libre reste toujours disponible.",
+    "admin.parametros.discountReasonsNewPlaceholder": "Nouveau motif (ex : Client fidèle)",
+    "admin.parametros.discountReasonsAddedToast": "Motif ajouté.",
+    "admin.parametros.discountReasonsUpdatedToast": "Motif mis à jour.",
+    "btn.add": "Ajouter",
+    "pos.discountModal.reasonOtherOption": "Autre (préciser)",
+    "pos.discountModal.reasonCustomPlaceholder": "Écrivez le motif",
+    "caja.movementsTitle": "Mouvements de caisse",
+    "caja.movementsHelp": "Entrées ou sorties d'espèces qui ne sont pas une vente (par exemple, un retrait pour acheter quelque chose, ou un apport de fonds). Elles se reflètent dans le résumé de la période en cours ci-dessus.",
+    "caja.movements.addBtn": "Enregistrer le mouvement",
+    "caja.movements.typeIncome": "Entrée",
+    "caja.movements.typeExpense": "Sortie",
+    "caja.movements.addedToast": "Mouvement enregistré.",
+    "caja.movements.none": "Il n'y a pas encore de mouvements de caisse.",
+    "caja.summary.manualMovementsLabel": "Mouvements manuels (net)",
   },
   en: {
     "nav.salon": "Floor",
@@ -1508,6 +1554,29 @@ const I18N_DICT = {
     "ui.changePassword.updatedToast": "Password updated.",
     "ui.accessRestricted.title": "Access restricted",
     "ui.accessRestricted.text": "Your role ({role}) doesn't have access to this section.",
+    "admin.parametros.currencySymbolLabel": "Currency symbol",
+    "admin.parametros.currencySymbolHelp": "Shown next to every amount in the POS, cash register and tickets (e.g. \"$\", \"US$\", \"€\").",
+    "admin.parametros.paymentMethodsTitle": "Payment methods",
+    "admin.parametros.paymentMethodsHelp": "Add, rename or deactivate the payment methods available at checkout in the POS, without touching any code.",
+    "admin.parametros.paymentMethodsNewPlaceholder": "New payment method (e.g. Mercado Pago)",
+    "admin.parametros.paymentMethodsAddedToast": "Payment method added.",
+    "admin.parametros.paymentMethodsUpdatedToast": "Payment method updated.",
+    "admin.parametros.discountReasonsTitle": "Discount reasons",
+    "admin.parametros.discountReasonsHelp": "Catalog of common reasons to speed up discounts in the POS. The \"Other\" option to type a free-text reason is always available there.",
+    "admin.parametros.discountReasonsNewPlaceholder": "New reason (e.g. Regular customer)",
+    "admin.parametros.discountReasonsAddedToast": "Reason added.",
+    "admin.parametros.discountReasonsUpdatedToast": "Reason updated.",
+    "btn.add": "Add",
+    "pos.discountModal.reasonOtherOption": "Other (specify)",
+    "pos.discountModal.reasonCustomPlaceholder": "Type the reason",
+    "caja.movementsTitle": "Cash movements",
+    "caja.movementsHelp": "Cash in or out that isn't a sale (for example, a cash withdrawal to buy something, or a float contribution). Reflected in the open period summary above.",
+    "caja.movements.addBtn": "Register movement",
+    "caja.movements.typeIncome": "Income",
+    "caja.movements.typeExpense": "Expense",
+    "caja.movements.addedToast": "Movement registered.",
+    "caja.movements.none": "No cash movements yet.",
+    "caja.summary.manualMovementsLabel": "Manual movements (net)",
   },
   pt: {
     "nav.salon": "Salão",
@@ -2007,6 +2076,29 @@ const I18N_DICT = {
     "ui.changePassword.updatedToast": "Senha atualizada.",
     "ui.accessRestricted.title": "Acesso restrito",
     "ui.accessRestricted.text": "Sua função ({role}) não tem acesso a esta seção.",
+    "admin.parametros.currencySymbolLabel": "Símbolo da moeda",
+    "admin.parametros.currencySymbolHelp": "Aparece ao lado de cada valor no PDV, no caixa e nos tickets (ex: \"$\", \"US$\", \"€\").",
+    "admin.parametros.paymentMethodsTitle": "Formas de pagamento",
+    "admin.parametros.paymentMethodsHelp": "Adicione, renomeie ou desative as formas de pagamento disponíveis ao cobrar no PDV, sem mexer no código.",
+    "admin.parametros.paymentMethodsNewPlaceholder": "Nova forma de pagamento (ex: Mercado Pago)",
+    "admin.parametros.paymentMethodsAddedToast": "Forma de pagamento adicionada.",
+    "admin.parametros.paymentMethodsUpdatedToast": "Forma de pagamento atualizada.",
+    "admin.parametros.discountReasonsTitle": "Motivos de desconto",
+    "admin.parametros.discountReasonsHelp": "Catálogo de motivos frequentes para agilizar o desconto no PDV. A opção \"Outro\" para escrever um motivo livre sempre fica disponível ali.",
+    "admin.parametros.discountReasonsNewPlaceholder": "Novo motivo (ex: Cliente frequente)",
+    "admin.parametros.discountReasonsAddedToast": "Motivo adicionado.",
+    "admin.parametros.discountReasonsUpdatedToast": "Motivo atualizado.",
+    "btn.add": "Adicionar",
+    "pos.discountModal.reasonOtherOption": "Outro (especificar)",
+    "pos.discountModal.reasonCustomPlaceholder": "Escreva o motivo",
+    "caja.movementsTitle": "Movimentações de caixa",
+    "caja.movementsHelp": "Entradas ou saídas de dinheiro que não são uma venda (por exemplo, uma retirada para comprar algo, ou um aporte de fundo). Refletem no resumo do período aberto acima.",
+    "caja.movements.addBtn": "Registrar movimentação",
+    "caja.movements.typeIncome": "Entrada",
+    "caja.movements.typeExpense": "Saída",
+    "caja.movements.addedToast": "Movimentação registrada.",
+    "caja.movements.none": "Ainda não há movimentações de caixa.",
+    "caja.summary.manualMovementsLabel": "Movimentações manuais (líquido)",
   },
   it: {
     "nav.salon": "Sala",
@@ -2506,6 +2598,29 @@ const I18N_DICT = {
     "ui.changePassword.updatedToast": "Password aggiornata.",
     "ui.accessRestricted.title": "Accesso limitato",
     "ui.accessRestricted.text": "Il tuo ruolo ({role}) non ha accesso a questa sezione.",
+    "admin.parametros.currencySymbolLabel": "Simbolo di valuta",
+    "admin.parametros.currencySymbolHelp": "Viene mostrato accanto a ogni importo nel POS, in cassa e sugli scontrini (es: \"$\", \"US$\", \"€\").",
+    "admin.parametros.paymentMethodsTitle": "Metodi di pagamento",
+    "admin.parametros.paymentMethodsHelp": "Aggiungi, rinomina o disattiva i metodi di pagamento disponibili al momento dell'incasso nel POS, senza toccare il codice.",
+    "admin.parametros.paymentMethodsNewPlaceholder": "Nuovo metodo di pagamento (es: Mercado Pago)",
+    "admin.parametros.paymentMethodsAddedToast": "Metodo di pagamento aggiunto.",
+    "admin.parametros.paymentMethodsUpdatedToast": "Metodo di pagamento aggiornato.",
+    "admin.parametros.discountReasonsTitle": "Motivi di sconto",
+    "admin.parametros.discountReasonsHelp": "Catalogo di motivi frequenti per velocizzare lo sconto nel POS. L'opzione \"Altro\" per scrivere un motivo libero resta sempre disponibile lì.",
+    "admin.parametros.discountReasonsNewPlaceholder": "Nuovo motivo (es: Cliente abituale)",
+    "admin.parametros.discountReasonsAddedToast": "Motivo aggiunto.",
+    "admin.parametros.discountReasonsUpdatedToast": "Motivo aggiornato.",
+    "btn.add": "Aggiungi",
+    "pos.discountModal.reasonOtherOption": "Altro (specificare)",
+    "pos.discountModal.reasonCustomPlaceholder": "Scrivi il motivo",
+    "caja.movementsTitle": "Movimenti di cassa",
+    "caja.movementsHelp": "Entrate o uscite di contanti che non sono una vendita (ad esempio, un prelievo per comprare qualcosa, o un conferimento di fondo cassa). Si riflettono nel riepilogo del periodo aperto qui sopra.",
+    "caja.movements.addBtn": "Registra movimento",
+    "caja.movements.typeIncome": "Entrata",
+    "caja.movements.typeExpense": "Uscita",
+    "caja.movements.addedToast": "Movimento registrato.",
+    "caja.movements.none": "Non ci sono ancora movimenti di cassa.",
+    "caja.summary.manualMovementsLabel": "Movimenti manuali (netto)",
   },
 };
 
@@ -2517,6 +2632,22 @@ const I18N_LANGUAGE_NAMES = { es: "Español", fr: "Français", en: "English", pt
 const I18N_LOCALE_MAP = { es: "es-AR", fr: "fr-FR", en: "en-US", pt: "pt-BR", it: "it-IT" };
 
 let currentLang = localStorage.getItem("rg_lang") || "es";
+
+// Símbolo de moneda configurado en Administración → Parámetros (antes era
+// un "$" fijo en el código). Se cachea igual que el idioma: se aplica de
+// entrada con lo cacheado y se sincroniza contra el servidor en
+// syncLangFromServer(), para no tener que esperar la red antes de poder
+// mostrar cualquier monto.
+let currencySymbol = localStorage.getItem("rg_currency_symbol") || "$";
+
+function getCurrencySymbol() {
+  return currencySymbol;
+}
+
+function setCurrencySymbol(symbol) {
+  currencySymbol = symbol || "$";
+  localStorage.setItem("rg_currency_symbol", currencySymbol);
+}
 
 // El segundo argumento puede ser:
 // - un string: el texto de respaldo si la clave no existe (uso de siempre), o
@@ -2584,6 +2715,9 @@ async function syncLangFromServer() {
     const data = await res.json();
     if (data.branch && data.branch.language && data.branch.language !== currentLang) {
       setLang(data.branch.language);
+    }
+    if (data.branch && data.branch.currencySymbol && data.branch.currencySymbol !== currencySymbol) {
+      setCurrencySymbol(data.branch.currencySymbol);
     }
   } catch (e) {
     // Sin conexión o sin sesión todavía: se queda con el idioma cacheado.
