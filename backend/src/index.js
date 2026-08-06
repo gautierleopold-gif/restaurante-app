@@ -1,6 +1,7 @@
 require("dotenv").config();
 const path = require("path");
 const express = require("express");
+const compression = require("compression");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -36,6 +37,11 @@ const io = new Server(server, {
 
 app.set("io", io);
 
+// Comprime las respuestas con gzip/brotli. Render ya comprime a nivel de
+// plataforma, pero esto lo garantiza también si la app corre en otro lado
+// (o en local), sin costo real: es una operación liviana para las
+// respuestas de texto (HTML/CSS/JS/JSON) que sirve esta app.
+app.use(compression());
 app.use(cors({ origin: corsOrigin }));
 // Límite ampliado (por defecto son 100kb): hace falta para poder recibir
 // archivos de Excel/CSV codificados en base64 (importador de menú) y logos de
@@ -73,7 +79,12 @@ io.on("connection", (socket) => {
 // producción alcanza con desplegar este backend: no hace falta un hosting
 // separado para el frontend.
 const frontendDir = path.join(__dirname, "..", "..", "frontend");
-app.use(express.static(frontendDir));
+// maxAge moderado: como todavía no hay un build con hash de contenido en el
+// nombre de archivo (bundler), un cacheo muy largo arriesgaría que el
+// personal se quede viendo JS/CSS viejo un buen rato después de un deploy.
+// 5 minutos reduce las revalidaciones repetidas de una sesión de trabajo
+// sin ese riesgo.
+app.use(express.static(frontendDir, { maxAge: "5m" }));
 
 // Manejo centralizado de errores -------------------------------------------
 app.use("/api", (req, res) => {
