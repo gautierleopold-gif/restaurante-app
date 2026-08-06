@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cierre de caja - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="page.caja.title">Cierre de caja</h2>
     </div>
@@ -67,7 +70,7 @@
         <tbody id="closures-body"></tbody>
       </table>
     </div>
-  </div>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/i18n.js"></script>
@@ -104,6 +107,7 @@
 
       async function loadPreview() {
         const el = document.getElementById("preview-summary");
+        el.innerHTML = loadingHTML();
         try {
           const data = await api("/cash-closures/preview");
           const movementsTotal = Number(data.manualMovementsTotal || 0);
@@ -117,7 +121,7 @@
               <div><span class="small muted">${t("caja.summary.totalSalesLabel", "Ventas totales")}</span><br /><strong>${money(data.totalSales)}</strong></div>
             </div>
             <div class="mt16"><span class="small muted">${t("caja.summary.byMethodLabel", "Por medio de pago")}</span><br />${methodsSummary(data.totalsByMethod)}</div>
-            <div class="mt16"><span class="small muted">${t("caja.summary.manualMovementsLabel", "Movimientos manuales (neto)")}</span><br /><strong style="${movementsTotal < 0 ? "color:var(--danger,#c0392b)" : ""}">${movementsTotal < 0 ? "-" : ""}${money(Math.abs(movementsTotal))}</strong></div>
+            <div class="mt16"><span class="small muted">${t("caja.summary.manualMovementsLabel", "Movimientos manuales (neto)")}</span><br /><strong style="${movementsTotal < 0 ? "color:var(--danger)" : ""}">${movementsTotal < 0 ? "-" : ""}${money(Math.abs(movementsTotal))}</strong></div>
           `;
         } catch (err) {
           el.innerHTML = `<p class="small muted">${t("caja.summary.error", "No se pudo calcular el resumen: {message}", { message: err.message })}</p>`;
@@ -129,6 +133,7 @@
       // ---------------------------------------------------------------------
       async function loadMovements() {
         const body = document.getElementById("movements-body");
+        body.innerHTML = `<tr><td colspan="5">${loadingHTML()}</td></tr>`;
         try {
           const data = await api("/cash-movements");
           if (data.movements.length === 0) {
@@ -171,8 +176,9 @@
       });
 
       async function loadHistory() {
-        const data = await api("/cash-closures");
         const body = document.getElementById("closures-body");
+        body.innerHTML = `<tr><td colspan="6">${loadingHTML()}</td></tr>`;
+        const data = await api("/cash-closures");
         if (data.closures.length === 0) {
           body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">${t("caja.noClosuresYet", "Todavía no se hizo ningún cierre.")}</td></tr>`;
           return;
@@ -193,7 +199,7 @@
       }
 
       document.getElementById("close-cash-btn").addEventListener("click", async () => {
-        if (!confirm(t("caja.confirmClose", "¿Confirmás el cierre de caja? Se va a guardar el resumen del período actual y arrancar uno nuevo."))) return;
+        if (!(await confirmModal(t("caja.confirmClose", "¿Confirmás el cierre de caja? Se va a guardar el resumen del período actual y arrancar uno nuevo.")))) return;
         try {
           await api("/cash-closures", { method: "POST" });
           toast(t("caja.closedToast", "Caja cerrada."), "success");
@@ -263,7 +269,7 @@
               });
             });
             document.getElementById("tips-reset-btn").addEventListener("click", async () => {
-              if (!confirm(t("caja.confirmResetTips", "¿Reiniciar la cuenta de propinas? El saldo actual queda en $0 (se conserva el historial)."))) return;
+              if (!(await confirmModal(t("caja.confirmResetTips", "¿Reiniciar la cuenta de propinas? El saldo actual queda en $0 (se conserva el historial).")))) return;
               const notes = prompt(t("caja.resetTipsNotesPrompt", 'Notas sobre este reinicio (opcional, ej. "reparto entre el personal"):'), "") || null;
               try {
                 await api("/tips/reset", { method: "POST", body: { notes } });

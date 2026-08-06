@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Administración - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <h2 class="mb16" data-i18n="page.admin.title">Administración</h2>
     <div class="tabs" id="tabs">
       <button data-tab="productos" class="active" data-i18n="tab.productos">Productos</button>
@@ -25,7 +28,7 @@
       <button data-tab="auditoria" id="tab-auditoria" style="display:none" data-i18n="tab.auditoria">Auditoría</button>
     </div>
     <div id="tab-content"></div>
-  </div>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/i18n.js"></script>
@@ -348,7 +351,7 @@
             ${ingredients.map(i => `<option value="${i.id}" ${i.id === ingredientId ? "selected" : ""}>${i.name} (${i.unit})</option>`).join("")}
           </select>
           <input type="number" step="0.001" class="recipe-qty" value="${quantity ?? 1}" style="flex:1" />
-          <button class="btn btn-sm btn-danger" data-remove-row type="button">×</button>
+          <button class="btn btn-sm btn-danger" data-remove-row type="button" aria-label="${t("admin.productos.removeIngredientRow", "Quitar insumo")}" title="${t("admin.productos.removeIngredientRow", "Quitar insumo")}">×</button>
         </div>`;
 
       const overlay = showModal(`<h2>${t("admin.productos.recipeTitle", "Receta de")} ${productName}</h2>
@@ -407,7 +410,7 @@
                 <div class="table-tile editable-table ${table.shape === "CIRCLE" ? "shape-circle" : ""}" style="left:${table.pos_x}px; top:${table.pos_y}px; width:${table.width}px; height:${table.height}px" data-table="${table.id}" data-pos-x="${table.pos_x}" data-pos-y="${table.pos_y}" data-width="${table.width}" data-height="${table.height}">
                   <div class="t-name" data-rename-table="${table.id}" title="${t("admin.salonTab.clickToRenameTitle", "Click para renombrar")}">${table.name}</div>
                   <div class="t-cap">${table.capacity} ${t("common.pers", "pers.")}</div>
-                  <button class="table-tile-delete" data-delete-table="${table.id}" title="${t("admin.salonTab.deleteTableTitle", "Eliminar mesa")}">×</button>
+                  <button class="table-tile-delete" data-delete-table="${table.id}" title="${t("admin.salonTab.deleteTableTitle", "Eliminar mesa")}" aria-label="${t("admin.salonTab.deleteTableTitle", "Eliminar mesa")}">×</button>
                   <div class="table-tile-resize" title="${t("admin.salonTab.resizeTitle", "Arrastrar para cambiar el tamaño")}"></div>
                 </div>`).join("")}
             </div>
@@ -449,7 +452,7 @@
         });
       }));
       document.querySelectorAll("[data-delete-room]").forEach(btn => btn.addEventListener("click", async () => {
-        if (!confirm(t("admin.salonTab.confirmDeleteRoom", "¿Eliminar este salón y todas sus mesas?"))) return;
+        if (!(await confirmModal(t("admin.salonTab.confirmDeleteRoom", "¿Eliminar este salón y todas sus mesas?")))) return;
         try {
           await apiWithOverride(`/rooms/${btn.dataset.deleteRoom}`, { method: "DELETE" }, "tables:manage");
           await refresh();
@@ -488,7 +491,7 @@
       }));
       document.querySelectorAll("[data-delete-table]").forEach(btn => btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (!confirm(t("admin.salonTab.confirmDeleteTable", "¿Eliminar esta mesa?"))) return;
+        if (!(await confirmModal(t("admin.salonTab.confirmDeleteTable", "¿Eliminar esta mesa?")))) return;
         try {
           await apiWithOverride(`/tables/${btn.dataset.deleteTable}`, { method: "DELETE" }, "tables:manage");
           await refresh();
@@ -502,7 +505,7 @@
       const bulkDeleteBtn = document.getElementById("bulk-delete-btn");
       if (bulkDeleteBtn) bulkDeleteBtn.addEventListener("click", async () => {
         if (selectedTables.size === 0) return;
-        if (!confirm(t("admin.salonTab.confirmBulkDelete", { count: selectedTables.size }))) return;
+        if (!(await confirmModal(t("admin.salonTab.confirmBulkDelete", { count: selectedTables.size })))) return;
         try {
           await apiWithOverride("/tables/bulk-delete", { method: "POST", body: { ids: [...selectedTables] } }, "tables:manage");
           toast(t("admin.salonTab.tablesDeletedToast", "Mesas eliminadas."), "success");
@@ -741,7 +744,7 @@
           <table><thead><tr><th>${t("common.name", "Nombre")}</th><th>${t("admin.inventario.colUnit", "Unidad")}</th><th>${t("admin.inventario.colStock", "Stock")}</th><th>${t("admin.inventario.colMin", "Mínimo")}</th><th>${t("admin.inventario.colCost", "Costo/unidad")}</th><th></th></tr></thead>
           <tbody>
             ${ingredients.map(i => `<tr>
-              <td>${i.name}${i.low_stock ? ` <span class="low-stock-badge">⚠ ${t("admin.inventario.lowStockBadge", "bajo stock")}</span>` : ""}</td>
+              <td>${i.name}${i.low_stock ? ` <span class="low-stock-badge">${icon("warning")} ${t("admin.inventario.lowStockBadge", "bajo stock")}</span>` : ""}</td>
               <td>${i.unit}</td>
               <td>${fmtNumber(i.stock)}
                 <div class="stock-bar"><div class="stock-bar-fill ${i.low_stock ? "low" : ""}" style="width:${Math.min(100, i.min_stock > 0 ? (i.stock / (i.min_stock * 2)) * 100 : 100)}%"></div></div>
@@ -911,7 +914,7 @@
         <div class="card mb16">
           <h3 style="margin-top:0">${t("admin.parametros.emailSectionTitle", "Envío de facturas por mail")}</h3>
           <p class="small muted">${t("admin.parametros.emailSectionHelp", "Opcional. Completá esto si querés poder mandar la factura por mail directamente desde un pedido, además de descargarla en PDF. Si no lo configurás, siempre podés descargar el PDF igual.")}</p>
-          <p class="small" style="background:#fff8e1;padding:8px;border-radius:6px">
+          <p class="small" style="background:var(--warning-soft);padding:8px;border-radius:6px">
             <strong>${t("admin.parametros.renderWarningTitle", "Importante si la app está alojada en el plan gratuito de Render:")}</strong> ${t("admin.parametros.renderWarningText", "desde septiembre de 2025 ese plan bloquea las conexiones salientes por SMTP (puertos 25/465/587), así que la configuración de SMTP de abajo no va a funcionar ahí. Para ese caso usá la")} <strong>${t("admin.parametros.resendApiKeyInline", "API key de Resend")}</strong> ${t("admin.parametros.renderWarningText2", "(es gratis para empezar, funciona por HTTPS y no choca con ese bloqueo): creá una cuenta en resend.com, generá una API key y pegala acá.")}
           </p>
           <div class="field"><label>${t("admin.parametros.resendApiKeyInline", "API key de Resend")} ${s.resend_api_key_set ? alreadySetSuffix : ""}</label><input id="set-resend-key" type="password" placeholder="re_xxxxxxxx" /></div>
@@ -1233,7 +1236,7 @@
               ${Object.entries(TEMPLATE_LAYOUTS).map(([k, v]) => `<option value="${k}" ${existing?.layout === k ? "selected" : ""}>${t(TEMPLATE_LAYOUT_KEYS[k] || "", v)}</option>`).join("")}
             </select>
           </div>
-          <div class="field"><label>${t("admin.plantillas.accentColorLabel", "Color de acento")}</label><input id="tpl-color" type="color" value="${existing?.accent_color || "#2F5233"}" /></div>
+          <div class="field"><label>${t("admin.plantillas.accentColorLabel", "Color de acento")}</label><input id="tpl-color" type="color" value="${existing?.accent_color || "#2f6b4f"}" /></div>
         </div>
         <div class="field"><label>${t("admin.plantillas.logoLabel", "Logo (opcional, imagen)")}${existing?.has_logo ? ` — ${t("admin.plantillas.logoReplaceHint", "ya tiene uno cargado; subí otro para reemplazarlo")}` : ""}</label><input id="tpl-logo" type="file" accept="image/*" /></div>
         <div class="field"><label>${t("admin.plantillas.headerTextLabel", "Texto de encabezado (opcional)")}</label><input id="tpl-header" value="${existing?.header_text || ""}" placeholder="${t("admin.plantillas.headerTextPlaceholder", "Ej: ¡Gracias por elegirnos!")}" /></div>
@@ -1303,7 +1306,7 @@
       );
       document.querySelectorAll("[data-delete-template]").forEach((btn) =>
         btn.addEventListener("click", async () => {
-          if (!confirm(t("admin.plantillas.confirmDelete", "¿Eliminar esta plantilla? Las facturas ya emitidas con ella no se modifican."))) return;
+          if (!(await confirmModal(t("admin.plantillas.confirmDelete", "¿Eliminar esta plantilla? Las facturas ya emitidas con ella no se modifican.")))) return;
           try {
             await apiWithOverride(`/invoice-templates/${btn.dataset.deleteTemplate}`, { method: "DELETE" }, "invoices:manageTemplates");
             await refresh();
@@ -1354,6 +1357,7 @@
       renderActiveTab();
     });
 
+    document.getElementById("tab-content").innerHTML = loadingHTML();
     refresh();
     } // fin del bloque "if (user)"
   </script>

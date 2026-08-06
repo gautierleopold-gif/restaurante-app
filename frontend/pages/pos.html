@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Punto de venta - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   <style>
     /* Ticket imprimible: oculto en pantalla, se muestra solo al imprimir
        (window.print()), formateado a ancho de impresora de tickets
@@ -30,7 +33,8 @@
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container" id="setup-container" style="display:none">
+  <main class="container" id="page-loading"><div class="loading-state"><span class="spinner"></span><span>Cargando...</span></div></main>
+  <main class="container" id="setup-container" style="display:none">
     <div class="card" style="max-width:480px;margin:40px auto">
       <h2 data-i18n="pos.newOrderForm.title">Nuevo pedido</h2>
       <div class="field">
@@ -45,9 +49,9 @@
       <div class="field" id="address-field"><label data-i18n="pos.newOrderForm.addressLabel">Dirección de entrega</label><input id="customer-address" /></div>
       <button class="btn btn-primary" id="create-order-btn" data-i18n="pos.newOrderForm.createBtn">Crear pedido</button>
     </div>
-  </div>
+  </main>
 
-  <div class="container" id="pos-container" style="display:none">
+  <main class="container" id="pos-container" style="display:none">
     <div class="flex-between mb16">
       <div>
         <h2 style="margin:0" id="order-title">Pedido</h2>
@@ -65,7 +69,7 @@
         <div class="flex-gap mt16" style="flex-wrap:wrap" id="ticket-actions"></div>
       </div>
     </div>
-  </div>
+  </main>
 
   <div id="print-ticket"></div>
 
@@ -319,7 +323,7 @@
           const label = overlay.querySelector(`[data-split-total="${g.id}"]`);
           label.querySelector(".qty-echo").textContent = qty;
           label.firstChild.textContent = `${t("pos.addItemModal.splitProgressLabel", "Repartido")}: ${sum} / `;
-          label.style.color = sum === qty ? "" : "#c0392b";
+          label.style.color = sum === qty ? "" : "var(--danger)";
         });
       }
       overlay.querySelectorAll(".split-qty").forEach((inp) => inp.addEventListener("input", updateSplitTotals));
@@ -413,7 +417,7 @@
                 <span>${money(lineTotal)}</span>
               </div>
               ${modsTxt ? `<div class="ti-mods">${modsTxt}</div>` : ""}
-              ${it.notes ? `<div class="ti-mods">📝 ${it.notes}</div>` : ""}
+              ${it.notes ? `<div class="ti-mods">${icon("note")} ${it.notes}</div>` : ""}
               <div class="ti-mods">
                 ${it.canceled ? `${t("pos.ticket.canceledLabel", "Anulado")}: ${it.cancel_reason || ""}` : it.sent_at ? `<span class="pill pill-${it.kitchen_status.toLowerCase()}">${t("kitchen.status." + it.kitchen_status, it.kitchen_status)}</span>` : t("pos.ticket.notSentToKitchen", "Sin enviar a cocina")}
                 ${!it.canceled ? ` · <a href="#" data-cancel-item="${it.id}">${t("pos.ticket.cancelLink", "anular")}</a>` : ""}
@@ -490,14 +494,14 @@
               <button class="btn btn-sm" id="email-invoice-btn">${t("pos.actions.emailInvoiceBtn", "Enviar por mail")}</button>`;
           }
         }
-        html += ` <button class="btn btn-sm" id="print-ticket-btn">🖨️ ${t("pos.actions.printTicketBtn", "Imprimir ticket")}</button>`;
+        html += ` <button class="btn btn-sm" id="print-ticket-btn">${icon("printer")} ${t("pos.actions.printTicketBtn", "Imprimir ticket")}</button>`;
         html += ` <button class="btn btn-sm" id="download-ticket-btn">${t("pos.actions.downloadTicketBtn", "Descargar ticket (.txt)")}</button>`;
         html += ` <a class="btn btn-sm" href="/pages/salon.html" id="back-to-salon-link">${t("pos.actions.backToSalonBtn", "Volver al salón")}</a>`;
         el.innerHTML = html;
         el.querySelector("#print-ticket-btn").addEventListener("click", printTicket);
         el.querySelector("#download-ticket-btn").addEventListener("click", downloadTicketTxt);
         if (order.status === "CERRADO" && canInvoice && !order.invoice) {
-          el.querySelector("#issue-invoice-btn").addEventListener("click", openIssueInvoiceModal);
+          el.querySelector("#issue-invoice-btn").addEventListener("click", openIssueInvoiceModalForOrder);
         }
         if (order.status === "CERRADO" && canInvoice && order.invoice) {
           // El link de descarga necesita el token; como es un <a> normal, lo
@@ -543,7 +547,7 @@
       if (order.table_id) html += `<button class="btn" id="request-bill-btn" data-i18n="page.pos.requestBill">${t("page.pos.requestBill")}</button>`;
       html += `<button class="btn btn-primary" id="pay-btn" data-i18n="page.pos.pay">${t("page.pos.pay")}</button>`;
       html += `<button class="btn btn-danger" id="cancel-order-btn" data-i18n="page.pos.cancelOrder">${t("page.pos.cancelOrder")}</button>`;
-      html += `<button class="btn btn-sm" id="print-ticket-btn">🖨️ ${t("pos.actions.printTicketBtn", "Imprimir ticket")}</button>`;
+      html += `<button class="btn btn-sm" id="print-ticket-btn">${icon("printer")} ${t("pos.actions.printTicketBtn", "Imprimir ticket")}</button>`;
       html += `<button class="btn btn-sm" id="download-ticket-btn">${t("pos.actions.downloadTicketBtn", "Descargar ticket (.txt)")}</button>`;
       el.innerHTML = html;
       el.querySelector("#print-ticket-btn").addEventListener("click", printTicket);
@@ -637,32 +641,8 @@
       });
     }
 
-    function openIssueInvoiceModal() {
-      const overlay = showModal(`
-        <h2>${t("pedidos.issueModal.title", { code: order.code })}</h2>
-        <p class="small muted">${t("pedidos.issueModal.hint", "Se genera con el próximo número correlativo configurado en Administración → Parámetros.")}</p>
-        <div class="field"><label>${t("pedidos.issueModal.nameLabel", "Nombre / razón social del cliente")}</label><input id="inv-name" value="${order.customer_name || ""}" /></div>
-        <div class="field"><label>${t("pedidos.issueModal.taxIdLabel", "NIT / identificación fiscal del cliente (opcional)")}</label><input id="inv-taxid" /></div>
-        <div class="field"><label>${t("pedidos.issueModal.emailLabel", "Email del cliente (opcional, para poder enviarla por mail)")}</label><input id="inv-email" type="email" value="${order.customer_phone && order.customer_phone.includes("@") ? "" : ""}" /></div>
-        <button class="btn btn-primary" id="confirm-issue-invoice">${t("pedidos.issueModal.confirmBtn", "Emitir factura")}</button>
-      `);
-      overlay.querySelector("#confirm-issue-invoice").addEventListener("click", async () => {
-        try {
-          await api(`/orders/${order.id}/invoice`, {
-            method: "POST",
-            body: {
-              customerName: overlay.querySelector("#inv-name").value || undefined,
-              customerTaxId: overlay.querySelector("#inv-taxid").value || undefined,
-              customerEmail: overlay.querySelector("#inv-email").value || undefined,
-            },
-          });
-          closeModal(overlay);
-          await refreshOrder();
-          toast(t("pedidos.issueSuccess", "Factura emitida."), "success");
-        } catch (err) {
-          toast(err.message, "error");
-        }
-      });
+    function openIssueInvoiceModalForOrder() {
+      openIssueInvoiceModal(order.id, order.code, order.customer_name, refreshOrder);
     }
 
     function openPayModal() {
@@ -752,14 +732,16 @@
         const data = await api("/orders", { method: "POST", body: { type: "SALON", tableId: params.get("tableId") } });
         order = data.order;
       } else if (params.get("new")) {
+        document.getElementById("page-loading").style.display = "none";
         document.getElementById("setup-container").style.display = "block";
         return;
       } else {
         location.href = "/pages/salon.html";
         return;
       }
-      document.getElementById("pos-container").style.display = "block";
       await loadMenu();
+      document.getElementById("page-loading").style.display = "none";
+      document.getElementById("pos-container").style.display = "block";
       renderTicket();
       if (params.get("pay")) openPayModal();
 
@@ -799,8 +781,8 @@
         });
         order = data.order;
         document.getElementById("setup-container").style.display = "none";
-        document.getElementById("pos-container").style.display = "block";
         await loadMenu();
+        document.getElementById("pos-container").style.display = "block";
         renderTicket();
         const socket = connectSocket();
         if (socket) {

@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title data-i18n="factura.pageTitle">Nueva factura libre - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="factura.title">Nueva factura libre</h2>
       <a href="/pages/pedidos.html" class="btn" data-i18n="factura.backToOrders">← Volver a pedidos</a>
@@ -45,7 +48,7 @@
         <tbody id="history-body"></tbody>
       </table>
     </div>
-  </div>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/i18n.js"></script>

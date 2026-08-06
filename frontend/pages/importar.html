@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Importar menú - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   <style>
     .import-step { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .import-step .badge-step {
@@ -13,21 +16,21 @@
       color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0;
     }
     .mapping-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-    .mapping-table th, .mapping-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border, #e5e0d8); font-size: 14px; }
+    .mapping-table th, .mapping-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
     .mapping-table select { width: 100%; }
-    .required-field::after { content: " *"; color: #b03a2e; }
+    .required-field::after { content: " *"; color: var(--danger); }
     .preview-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-    .preview-table th, .preview-table td { padding: 4px 6px; border: 1px solid var(--border, #e5e0d8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+    .preview-table th, .preview-table td { padding: 4px 6px; border: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
     .section-disabled { opacity: 0.5; pointer-events: none; }
-    .summary-box { background: var(--bg-soft, #f3f0ea); border-radius: 8px; padding: 12px 16px; margin-top: 12px; }
+    .summary-box { background: var(--surface-alt); border-radius: 8px; padding: 12px 16px; margin-top: 12px; }
     .row-errors { max-height: 180px; overflow-y: auto; font-size: 13px; margin-top: 8px; }
-    .row-errors li { color: #b03a2e; }
+    .row-errors li { color: var(--danger); }
     .sheet-picker { margin: 12px 0; }
   </style>
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <h2 class="mb16" data-i18n="importar.title">Importar menú (Fudo u otro sistema)</h2>
 
     <div class="card mb16">
@@ -92,7 +95,7 @@
         <div id="adicionales-summary"></div>
       </div>
     </div>
-  </div>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/i18n.js"></script>

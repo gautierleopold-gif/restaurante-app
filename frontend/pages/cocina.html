@@ -5,16 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cocina - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="page.cocina.title">Comandas</h2>
       <label class="flex-gap small"><input type="checkbox" id="autorefresh" checked style="width:auto" /> <span data-i18n="cocina.autoRefresh">Actualización automática</span></label>
     </div>
     <div class="kds-board" id="kds-board"></div>
-  </div>
+  </main>
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
@@ -55,7 +58,7 @@
       const board = document.getElementById("kds-board");
       const stationNames = Object.keys(stations).sort();
       if (stationNames.length === 0) {
-        board.innerHTML = `<div class="empty-state">${t("cocina.noItems")} 🎉</div>`;
+        board.innerHTML = `<div class="empty-state">${icon("check")} ${t("cocina.noItems")}</div>`;
         return;
       }
       board.innerHTML = stationNames
@@ -70,7 +73,7 @@
               <div class="kc-top"><span>Pedido #${it.order_code} · ${it.table_name || it.customer_name || it.order_type}</span><span class="kc-time">${minutesAgo(it.sent_at)}</span></div>
               <div style="margin-top:6px">${it.quantity}x ${it.product_name}${it.variant_name ? " (" + it.variant_name + ")" : ""}</div>
               ${it.modifiers.length ? `<div class="kc-mods">${it.modifiers.join(", ")}</div>` : ""}
-              ${it.notes ? `<div class="kc-mods">📝 ${it.notes}</div>` : ""}
+              ${it.notes ? `<div class="kc-mods">${icon("note")} ${it.notes}</div>` : ""}
               <div class="kc-actions">
                 ${
                   canUpdateStatus && nextStatus(it.kitchen_status)

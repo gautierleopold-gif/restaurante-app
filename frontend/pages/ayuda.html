@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ayuda - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   <style>
     .help-section summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
     .help-section[open] summary { color: var(--primary-dark); }
@@ -15,7 +18,7 @@
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <h2 class="mb16" data-i18n="page.ayuda.title">Ayuda y manual de usuario</h2>
 
     <div class="card mb16">
@@ -129,7 +132,7 @@
         <p>Registro histórico de acciones relevantes (pagos, cierres, cambios de parámetros, autorizaciones de supervisor, etc.) con quién y cuándo las hizo.</p>
       </details>
     </div>
-  </div>
+  </main>
 
   <script src="/js/api.js"></script>
   <script src="/js/i18n.js"></script>

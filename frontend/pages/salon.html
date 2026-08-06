@@ -5,17 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Salón - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="page.salon.title">Salón</h2>
       <button class="btn btn-primary" id="new-order-btn" data-i18n="page.salon.newOrderBtn">+ Pedido para retiro / delivery</button>
     </div>
     <div class="room-tabs" id="room-tabs"></div>
     <div class="floor" id="floor"></div>
-  </div>
+  </main>
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
@@ -27,6 +30,7 @@
 
     let rooms = [];
     let activeRoomId = null;
+    document.getElementById("floor").innerHTML = loadingHTML();
 
     async function loadRooms() {
       const data = await api("/rooms");

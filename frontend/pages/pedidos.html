@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pedidos - Gestión Restaurante</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 </head>
 <body>
   <div id="app-nav"></div>
-  <div class="container">
+  <main class="container">
     <div class="flex-between mb16">
       <h2 style="margin:0" data-i18n="page.pedidos.title">Pedidos</h2>
       <div class="flex-gap">
@@ -29,7 +32,7 @@
         <tbody id="orders-body"></tbody>
       </table>
     </div>
-  </div>
+  </main>
 
   <script src="/js/socket.io.min.js"></script>
   <script src="/js/api.js"></script>
@@ -56,8 +59,9 @@
     }
 
     async function load() {
-      const data = await api(`/orders?status=${currentStatus}`);
       const body = document.getElementById("orders-body");
+      body.innerHTML = `<tr><td colspan="8">${loadingHTML()}</td></tr>`;
+      const data = await api(`/orders?status=${currentStatus}`);
       if (data.orders.length === 0) {
         body.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">${t("pedidos.emptyState", "No hay pedidos en este estado.")}</td></tr>`;
         return;
@@ -98,7 +102,7 @@
 
     function wireInvoiceButtons() {
       document.querySelectorAll("[data-issue-invoice]").forEach((btn) =>
-        btn.addEventListener("click", () => openIssueInvoiceModal(btn.dataset.issueInvoice, btn.dataset.code, btn.dataset.customer))
+        btn.addEventListener("click", () => openIssueInvoiceModal(btn.dataset.issueInvoice, btn.dataset.code, btn.dataset.customer, load))
       );
       document.querySelectorAll("[data-download-invoice]").forEach((btn) =>
         btn.addEventListener("click", async () => {
@@ -121,34 +125,6 @@
           }
         })
       );
-    }
-
-    function openIssueInvoiceModal(orderId, code, customerName) {
-      const overlay = showModal(`
-        <h2>${t("pedidos.issueModal.title", { code })}</h2>
-        <p class="small muted">${t("pedidos.issueModal.hint", "Se genera con el próximo número correlativo configurado en Administración → Parámetros.")}</p>
-        <div class="field"><label>${t("pedidos.issueModal.nameLabel", "Nombre / razón social del cliente")}</label><input id="inv-name" value="${customerName || ""}" /></div>
-        <div class="field"><label>${t("pedidos.issueModal.taxIdLabel", "NIT / identificación fiscal del cliente (opcional)")}</label><input id="inv-taxid" /></div>
-        <div class="field"><label>${t("pedidos.issueModal.emailLabel", "Email del cliente (opcional, para poder enviarla por mail)")}</label><input id="inv-email" type="email" /></div>
-        <button class="btn btn-primary" id="confirm-issue-invoice">${t("pedidos.issueModal.confirmBtn", "Emitir factura")}</button>
-      `);
-      overlay.querySelector("#confirm-issue-invoice").addEventListener("click", async () => {
-        try {
-          await api(`/orders/${orderId}/invoice`, {
-            method: "POST",
-            body: {
-              customerName: overlay.querySelector("#inv-name").value || undefined,
-              customerTaxId: overlay.querySelector("#inv-taxid").value || undefined,
-              customerEmail: overlay.querySelector("#inv-email").value || undefined,
-            },
-          });
-          closeModal(overlay);
-          toast(t("pedidos.issueSuccess", "Factura emitida."), "success");
-          load();
-        } catch (err) {
-          toast(err.message, "error");
-        }
-      });
     }
 
     document.getElementById("status-tabs").addEventListener("click", (e) => {
