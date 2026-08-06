@@ -80,6 +80,11 @@ ALTER TABLE branches ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'es
 -- ticket, caja, factura). Antes estaba fijo en "$" en el código; ahora es un
 -- parámetro más de la sucursal, editable desde Administración → Parámetros.
 ALTER TABLE branches ADD COLUMN IF NOT EXISTS currency_symbol TEXT NOT NULL DEFAULT '$';
+-- Modo de cierre de caja (ver tabla cash_closures más abajo para el detalle):
+-- SIMPLE solo pide cuánto efectivo queda en caja para el turno siguiente;
+-- ARQUEO además pide contar el efectivo físico y calcula la diferencia contra
+-- lo esperado. Elegible por sucursal desde Administración → Parámetros.
+ALTER TABLE branches ADD COLUMN IF NOT EXISTS cash_closure_mode TEXT NOT NULL DEFAULT 'SIMPLE';
 
 -- Usuarios ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
@@ -523,3 +528,17 @@ CREATE INDEX IF NOT EXISTS idx_cash_movements_branch ON cash_movements(branch_id
 -- que el historial de cierres no pierda ese dato aunque cambien los
 -- movimientos futuros.
 ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS manual_movements_total NUMERIC(10,2) NOT NULL DEFAULT 0;
+
+-- ============================================================================
+-- Tesorería del cierre de caja: cuánto efectivo había al empezar el período
+-- (fondo, que es lo que se dejó en el cierre anterior), y qué se hace con el
+-- efectivo al cerrar. En modo SIMPLE solo se completa cash_left_for_change;
+-- en modo ARQUEO además se cuenta la caja de verdad (counted_cash) y se
+-- calcula la diferencia contra lo esperado (fondo + ventas en efectivo +
+-- movimientos manuales). Todas nullable porque en modo SIMPLE no se piden.
+-- ============================================================================
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS opening_float NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS counted_cash NUMERIC(10,2);
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS cash_withdrawn NUMERIC(10,2);
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS cash_left_for_change NUMERIC(10,2);
+ALTER TABLE cash_closures ADD COLUMN IF NOT EXISTS difference NUMERIC(10,2);
