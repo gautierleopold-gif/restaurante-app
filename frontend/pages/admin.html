@@ -988,6 +988,18 @@
             </select>
           </div>
           <button class="btn btn-primary" id="save-settings-language">${t("admin.parametros.saveLanguageBtn", "Guardar idioma")}</button>
+        </div>
+        <div class="card mb16">
+          <h3 style="margin-top:0">${t("admin.parametros.cashClosureTitle", "Cierre de caja")}</h3>
+          <p class="small muted">${t("admin.parametros.cashClosureHelp", 'Elegí cómo se cierra la caja en la pantalla "Cierre de caja". Simple solo pide cuánto efectivo dejás para el cambio del turno siguiente. Arqueo completo además te pide contar el efectivo físico y muestra la diferencia contra lo esperado (fondo inicial + ventas en efectivo + movimientos manuales).')}</p>
+          <div class="field">
+            <label>${t("admin.parametros.cashClosureModeLabel", "Modo de cierre de caja")}</label>
+            <select id="set-cash-closure-mode">
+              <option value="SIMPLE" ${(s.cash_closure_mode || "SIMPLE") === "SIMPLE" ? "selected" : ""}>${t("admin.parametros.cashClosureModeSimple", "Simple")}</option>
+              <option value="ARQUEO" ${s.cash_closure_mode === "ARQUEO" ? "selected" : ""}>${t("admin.parametros.cashClosureModeArqueo", "Arqueo completo")}</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="save-settings-cash-closure-mode">${t("admin.parametros.saveCashClosureModeBtn", "Guardar modo de cierre de caja")}</button>
         </div>`;
     }
     function wireParametros() {
@@ -1058,11 +1070,20 @@
           setTimeout(() => location.reload(), 600);
         } catch (err) { toast(err.message, "error"); }
       }
+      async function saveCashClosureMode() {
+        try {
+          const cashClosureMode = document.getElementById("set-cash-closure-mode").value;
+          await apiWithOverride("/settings", { method: "PATCH", body: { cashClosureMode } }, "settings:manage");
+          toast(t("admin.parametros.cashClosureModeSavedToast", "Modo de cierre de caja actualizado."), "success");
+          await refresh();
+        } catch (err) { toast(err.message, "error"); }
+      }
       document.getElementById("save-settings-1").addEventListener("click", saveBusinessData);
       document.getElementById("save-settings-tax").addEventListener("click", saveTaxData);
       document.getElementById("save-settings-2").addEventListener("click", saveMailData);
       document.getElementById("save-settings-smtp").addEventListener("click", saveSmtpData);
       document.getElementById("save-settings-language").addEventListener("click", saveLanguage);
+      document.getElementById("save-settings-cash-closure-mode").addEventListener("click", saveCashClosureMode);
 
       // -----------------------------------------------------------------
       // Medios de pago

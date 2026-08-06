@@ -66,7 +66,7 @@
     <div class="card">
       <h3 style="margin-top:0" data-i18n="caja.historyTitle">Historial de cierres</h3>
       <table>
-        <thead><tr><th data-i18n="caja.col.closedAt">Cerrado</th><th data-i18n="caja.col.period">Período</th><th data-i18n="caja.col.orders">Pedidos</th><th data-i18n="caja.col.totalSales">Ventas totales</th><th data-i18n="caja.col.byMethod">Por medio de pago</th><th data-i18n="caja.col.closedBy">Cerrado por</th></tr></thead>
+        <thead><tr><th data-i18n="caja.col.closedAt">Cerrado</th><th data-i18n="caja.col.period">Período</th><th data-i18n="caja.col.orders">Pedidos</th><th data-i18n="caja.col.totalSales">Ventas totales</th><th data-i18n="caja.col.byMethod">Por medio de pago</th><th data-i18n="caja.col.countedCash">Contado</th><th data-i18n="caja.col.difference">Diferencia</th><th data-i18n="caja.col.cashLeft">Dejado</th><th data-i18n="caja.col.closedBy">Cerrado por</th></tr></thead>
         <tbody id="closures-body"></tbody>
       </table>
     </div>
@@ -99,17 +99,39 @@
         }
       }
 
+      // Modo de cierre configurado en Administración → Parámetros: se lee de
+      // /settings/public porque Cajero/Encargado no tienen el permiso
+      // settings:manage que exige el endpoint completo de Parámetros.
+      let cashClosureMode = "SIMPLE";
+      async function loadCashClosureMode() {
+        try {
+          const data = await api("/settings/public");
+          cashClosureMode = data.branch?.cashClosureMode === "ARQUEO" ? "ARQUEO" : "SIMPLE";
+        } catch (err) {
+          cashClosureMode = "SIMPLE";
+        }
+      }
+
+      function fmtDiff(diff) {
+        const n = Number(diff);
+        const color = n < 0 ? "var(--danger)" : n > 0 ? "var(--accent)" : "";
+        const sign = n < 0 ? "-" : n > 0 ? "+" : "";
+        return `<strong style="${color ? `color:${color}` : ""}">${sign}${money(Math.abs(n))}</strong>`;
+      }
+
       function methodsSummary(obj) {
         const entries = Object.entries(obj || {});
         if (entries.length === 0) return "-";
         return entries.map(([m, v]) => `${paymentMethodLabels[m] || t("pos.payMethod." + m, m)}: ${money(v)}`).join(" · ");
       }
 
+      let lastPreview = null;
       async function loadPreview() {
         const el = document.getElementById("preview-summary");
         el.innerHTML = loadingHTML();
         try {
           const data = await api("/cash-closures/preview");
+          lastPreview = data;
           const movementsTotal = Number(data.manualMovementsTotal || 0);
           el.innerHTML = `
             <div class="grid grid-2">
@@ -122,6 +144,10 @@
             </div>
             <div class="mt16"><span class="small muted">${t("caja.summary.byMethodLabel", "Por medio de pago")}</span><br />${methodsSummary(data.totalsByMethod)}</div>
             <div class="mt16"><span class="small muted">${t("caja.summary.manualMovementsLabel", "Movimientos manuales (neto)")}</span><br /><strong style="${movementsTotal < 0 ? "color:var(--danger)" : ""}">${movementsTotal < 0 ? "-" : ""}${money(Math.abs(movementsTotal))}</strong></div>
+            <div class="mt16 grid grid-2">
+              <div><span class="small muted">${t("caja.summary.openingFloatLabel", "Fondo inicial (efectivo)")}</span><br /><strong>${money(data.openingFloat)}</strong></div>
+              <div><span class="small muted">${t("caja.summary.expectedCashLabel", "Efectivo esperado en caja")}</span><br /><strong>${money(data.expectedCash)}</strong></div>
+            </div>
           `;
         } catch (err) {
           el.innerHTML = `<p class="small muted">${t("caja.summary.error", "No se pudo calcular el resumen: {message}", { message: err.message })}</p>`;
@@ -177,10 +203,10 @@
 
       async function loadHistory() {
         const body = document.getElementById("closures-body");
-        body.innerHTML = `<tr><td colspan="6">${loadingHTML()}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="9">${loadingHTML()}</td></tr>`;
         const data = await api("/cash-closures");
         if (data.closures.length === 0) {
-          body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">${t("caja.noClosuresYet", "Todavía no se hizo ningún cierre.")}</td></tr>`;
+          body.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">${t("caja.noClosuresYet", "Todavía no se hizo ningún cierre.")}</td></tr>`;
           return;
         }
         body.innerHTML = data.closures
@@ -192,20 +218,128 @@
             <td>${c.order_count}</td>
             <td>${money(c.total_sales)}</td>
             <td class="small">${methodsSummary(c.totals_by_method)}</td>
+            <td>${c.counted_cash != null ? money(c.counted_cash) : "-"}</td>
+            <td>${c.difference != null ? fmtDiff(c.difference) : "-"}</td>
+            <td>${c.cash_left_for_change != null ? money(c.cash_left_for_change) : "-"}</td>
             <td>${c.closed_by_name || "-"}</td>
           </tr>`
           )
           .join("");
       }
 
-      document.getElementById("close-cash-btn").addEventListener("click", async () => {
-        if (!(await confirmModal(t("caja.confirmClose", "¿Confirmás el cierre de caja? Se va a guardar el resumen del período actual y arrancar uno nuevo.")))) return;
+      // ---------------------------------------------------------------------
+      // Cerrar caja: el formulario depende del modo configurado en
+      // Administración → Parámetros (Simple vs. Arqueo completo).
+      // ---------------------------------------------------------------------
+      async function submitClose(overlay, body) {
         try {
-          await api("/cash-closures", { method: "POST" });
+          await api("/cash-closures", { method: "POST", body });
+          closeModal(overlay);
           toast(t("caja.closedToast", "Caja cerrada."), "success");
           await Promise.all([loadPreview(), loadHistory()]);
         } catch (err) {
           toast(err.message, "error");
+        }
+      }
+
+      function openSimpleCloseModal(preview) {
+        const suggested = Math.max(0, Number(preview?.expectedCash || 0));
+        const overlay = showModal(`
+          <h2 data-i18n="caja.closeModal.title">${t("caja.closeModal.title", "Cerrar caja")}</h2>
+          <p class="modal-text">${t("caja.closeModal.simpleHelp", "Se va a guardar el resumen del período actual y arrancar uno nuevo.")}</p>
+          <div class="field">
+            <label>${t("caja.closeModal.cashLeftLabel", "Efectivo que dejás en caja para el cambio del turno siguiente")}</label>
+            <input id="close-cash-left" type="number" step="0.01" min="0" value="${suggested.toFixed(2)}" />
+          </div>
+          <div class="field"><label>${t("caja.notesOptionalLabel", "Notas (opcional)")}</label><input id="close-notes" /></div>
+          <div class="modal-actions">
+            <button class="btn" data-action="cancel">${t("btn.cancel", "Cancelar")}</button>
+            <button class="btn btn-primary" id="close-confirm-btn">${t("caja.closeModal.confirmBtn", "Confirmar cierre")}</button>
+          </div>
+        `);
+        overlay.querySelector('[data-action="cancel"]').addEventListener("click", () => closeModal(overlay));
+        overlay.querySelector("#close-confirm-btn").addEventListener("click", () => {
+          const cashLeftForChange = Number(document.getElementById("close-cash-left").value);
+          if (isNaN(cashLeftForChange) || cashLeftForChange < 0) {
+            toast(t("caja.closeModal.invalidAmount", "Ingresá un monto válido."), "error");
+            return;
+          }
+          submitClose(overlay, {
+            cashLeftForChange,
+            notes: document.getElementById("close-notes").value || null,
+          });
+        });
+      }
+
+      function openArqueoCloseModal(preview) {
+        const expected = Number(preview?.expectedCash || 0);
+        const overlay = showModal(`
+          <h2 data-i18n="caja.closeModal.title">${t("caja.closeModal.title", "Cerrar caja")}</h2>
+          <p class="modal-text">${t("caja.closeModal.arqueoHelp", "Contá el efectivo físico de la caja e ingresá el total para compararlo contra lo esperado.")}</p>
+          <div class="mt8"><span class="small muted">${t("caja.closeModal.expectedLabel", "Efectivo esperado")}</span><br /><strong>${money(expected)}</strong></div>
+          <div class="field mt16">
+            <label>${t("caja.closeModal.countedLabel", "Efectivo contado")}</label>
+            <input id="close-counted" type="number" step="0.01" min="0" />
+          </div>
+          <div class="mt8"><span class="small muted">${t("caja.closeModal.diffLabel", "Diferencia")}</span><br /><span id="close-diff">-</span></div>
+          <div class="field mt16">
+            <label>${t("caja.closeModal.withdrawnLabel", "Efectivo que retirás / depositás")}</label>
+            <input id="close-withdrawn" type="number" step="0.01" min="0" value="0" />
+          </div>
+          <div class="field">
+            <label>${t("caja.closeModal.cashLeftLabel", "Efectivo que dejás en caja para el cambio del turno siguiente")}</label>
+            <input id="close-cash-left" type="number" step="0.01" min="0" />
+          </div>
+          <div class="field"><label>${t("caja.notesOptionalLabel", "Notas (opcional)")}</label><input id="close-notes" /></div>
+          <div class="modal-actions">
+            <button class="btn" data-action="cancel">${t("btn.cancel", "Cancelar")}</button>
+            <button class="btn btn-primary" id="close-confirm-btn">${t("caja.closeModal.confirmBtn", "Confirmar cierre")}</button>
+          </div>
+        `);
+        const countedInput = overlay.querySelector("#close-counted");
+        const withdrawnInput = overlay.querySelector("#close-withdrawn");
+        const cashLeftInput = overlay.querySelector("#close-cash-left");
+        const diffEl = overlay.querySelector("#close-diff");
+
+        function recalc() {
+          const counted = Number(countedInput.value);
+          if (countedInput.value === "" || isNaN(counted)) {
+            diffEl.textContent = "-";
+            return;
+          }
+          diffEl.innerHTML = fmtDiff(counted - expected);
+          // Sugiere "dejar lo contado menos lo retirado" mientras el usuario
+          // no haya tocado el campo a mano (para no pisarle lo que escribió).
+          if (!cashLeftInput.dataset.touched) {
+            const withdrawn = Number(withdrawnInput.value) || 0;
+            cashLeftInput.value = Math.max(0, counted - withdrawn).toFixed(2);
+          }
+        }
+        countedInput.addEventListener("input", recalc);
+        withdrawnInput.addEventListener("input", recalc);
+        cashLeftInput.addEventListener("input", () => { cashLeftInput.dataset.touched = "1"; });
+
+        overlay.querySelector('[data-action="cancel"]').addEventListener("click", () => closeModal(overlay));
+        overlay.querySelector("#close-confirm-btn").addEventListener("click", () => {
+          const countedCash = Number(countedInput.value);
+          if (countedInput.value === "" || isNaN(countedCash) || countedCash < 0) {
+            toast(t("caja.closeModal.invalidCounted", "Ingresá el efectivo contado."), "error");
+            return;
+          }
+          submitClose(overlay, {
+            countedCash,
+            cashWithdrawn: Number(withdrawnInput.value) || 0,
+            cashLeftForChange: Number(cashLeftInput.value) || 0,
+            notes: document.getElementById("close-notes").value || null,
+          });
+        });
+      }
+
+      document.getElementById("close-cash-btn").addEventListener("click", () => {
+        if (cashClosureMode === "ARQUEO") {
+          openArqueoCloseModal(lastPreview);
+        } else {
+          openSimpleCloseModal(lastPreview);
         }
       });
 
@@ -283,7 +417,7 @@
         }
       }
 
-      loadPaymentMethodLabels().then(() => {
+      Promise.all([loadPaymentMethodLabels(), loadCashClosureMode()]).then(() => {
         loadPreview();
         loadHistory();
       });
