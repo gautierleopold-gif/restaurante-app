@@ -11,20 +11,85 @@
   --warning: #c98a1c;
   --danger: #b5482f;
   --info: #3d6b91;
+  --warning-soft: #fbf1de;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(44, 38, 34, 0.08), 0 1px 2px rgba(44, 38, 34, 0.06);
+  --shadow-md: 0 4px 10px rgba(44, 38, 34, 0.1), 0 1px 3px rgba(44, 38, 34, 0.08);
+  --shadow-lg: 0 10px 26px rgba(44, 38, 34, 0.16), 0 2px 6px rgba(44, 38, 34, 0.08);
+
+  /* Tipografía: familia propia (Inter) con la pila de sistema como respaldo
+     inmediato mientras carga o si el navegador no tiene acceso a internet. */
+  --font-family: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-xs: 0.75rem;
+  --font-sm: 0.85rem;
+  --font-base: 0.92rem;
+  --font-md: 1rem;
+  --font-lg: 1.15rem;
+  --font-xl: 1.4rem;
+  --font-2xl: 1.75rem;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-family);
+  font-size: var(--font-base);
   background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
+h1, h2, h3, h4 { font-family: var(--font-family); font-weight: 700; letter-spacing: -0.01em; }
+
 a { color: var(--primary); text-decoration: none; }
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Ícono inline (reemplaza los emojis usados antes como iconografía) */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  stroke: currentColor;
+  fill: none;
+  flex-shrink: 0;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* Spinner reutilizable para estados de carga */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 1em;
+  height: 1em;
+  border: 2px solid rgba(44, 38, 34, 0.15);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  padding: 48px 20px;
+  color: var(--text-muted);
+  font-size: var(--font-base);
+}
+.loading-state .spinner { width: 1.3em; height: 1.3em; border-width: 3px; }
 
 .topbar {
   display: flex;
@@ -98,19 +163,28 @@ button {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  padding: 8px 14px;
+  padding: 9px 16px;
   border-radius: 8px;
   font-size: 0.9rem;
-  transition: all 0.12s ease;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  transition: transform 0.08s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
-.btn:hover { border-color: var(--primary); color: var(--primary-dark); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:hover { border-color: var(--primary); color: var(--primary-dark); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); box-shadow: var(--shadow); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; transform: none; }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-dark); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
 .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-accent:hover { color: #fff; border-color: var(--accent); filter: brightness(0.94); }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-.btn-ghost { background: transparent; border-color: transparent; }
-.btn-sm { padding: 5px 10px; font-size: 0.8rem; }
+.btn-danger:hover { color: #fff; border-color: var(--danger); filter: brightness(0.94); }
+.btn-ghost { background: transparent; border-color: transparent; box-shadow: none; }
+.btn-ghost:hover { box-shadow: none; transform: none; background: var(--surface-alt); }
+/* .btn-sm: se usa mucho en pantallas de uso táctil (POS, salón, cocina) durante
+   el servicio, así que el área clickeable se mantiene compacta visualmente
+   pero con suficiente alto real para no fallar el toque en una tablet. */
+.btn-sm { padding: 8px 12px; font-size: 0.8rem; min-height: 34px; }
 
 .container {
   max-width: 1300px;
@@ -123,8 +197,10 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: 18px;
 }
+.card.card-hover { transition: box-shadow 0.15s ease, transform 0.15s ease; }
+.card.card-hover:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 
 .grid { display: grid; gap: 14px; }
 .grid-2 { grid-template-columns: 1fr 1fr; }
@@ -154,9 +230,13 @@ label { font-size: 0.82rem; color: var(--text-muted); display: block; margin-bot
 .field { margin-bottom: 10px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--border); font-size: 0.78rem; text-transform: uppercase; }
-table td { padding: 8px; border-bottom: 1px solid var(--border); }
-table tr:hover td { background: var(--surface-alt); }
+table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 0.75rem; letter-spacing: 0.02em; text-transform: uppercase; }
+table td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+table tbody tr:nth-child(even) td { background: var(--surface-alt); }
+table tr:hover td { background: #efe6de; }
+/* Columna de acciones (últimas celdas con botones .btn-sm): se despega
+   levemente del contenido para que se distinga de los datos de la fila. */
+table td:has(.btn-sm) { text-align: right; white-space: nowrap; }
 
 .pill {
   display: inline-block;
@@ -212,9 +292,9 @@ table tr:hover td { background: var(--surface-alt); }
   gap: 4px;
   cursor: pointer;
   box-shadow: var(--shadow);
-  transition: transform 0.08s ease;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
-.table-tile:hover { transform: translateY(-2px); }
+.table-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .table-tile.libre { border-color: #bcdcc7; }
 .table-tile.ocupada { border-color: #e6b9a9; background: #fdf3ef; }
 .table-tile.reservada { border-color: #c4cdec; background: #f2f4fc; }
@@ -359,9 +439,10 @@ table tr:hover td { background: var(--surface-alt); }
   border-radius: 10px;
   padding: 12px;
   cursor: pointer;
-  transition: border-color 0.1s ease;
+  box-shadow: var(--shadow);
+  transition: border-color 0.1s ease, box-shadow 0.1s ease, transform 0.1s ease;
 }
-.product-card:hover { border-color: var(--primary); }
+.product-card:hover { border-color: var(--primary); box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .product-card .p-name { font-weight: 600; font-size: 0.92rem; }
 .product-card .p-price { color: var(--accent); font-weight: 700; margin-top: 6px; }
 .ticket { position: sticky; top: 70px; }
@@ -400,6 +481,8 @@ table tr:hover td { background: var(--surface-alt); }
   box-shadow: 0 12px 30px rgba(0,0,0,0.25);
 }
 .modal h2 { margin-top: 0; font-size: 1.1rem; }
+.modal p.modal-text { color: var(--text); font-size: 0.92rem; line-height: 1.5; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
 .toast {
   position: fixed; bottom: 20px; right: 20px; z-index: 200;
